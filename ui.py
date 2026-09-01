@@ -1,0 +1,262 @@
+"""CogniFlow web UI.
+
+    .venv/Scripts/python.exe -m streamlit run ui.py
+
+Two modes:
+
+  Watch      replay the scripted prerequisite-redirect scenario, step by step.
+  Be the     a real tutoring session where YOU are the student. This exercises the
+  student   genuine LangGraph interrupt/resume cycle -- the graph checkpoints and halts
+            while you think, and resumes when you submit.
+
+Invariant: this module renders state, it never decides anything. Every adaptation shown
+here was produced by the graph. If the UI disappeared, the behaviour would be identical.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import streamlit as st  # noqa: E402
+from langgraph.types import Command  # noqa: E402
+
+from app.graph.builder import build_graph  # noqa: E402
+from app.graph.deps import GraphDeps  # noqa: E402
+from app.graph.state import initial_state  # noqa: E402
+from app.rag.retriever import Retriever  # noqa: E402
+from app.services.demo_runner import (  # noqa: E402
+    DEMO_SEED,
+    Behaviour,
+    run_demo,
+    seed_student,
+)
+from app.services.events import EventLog, EventType  # noqa: E402
+from app.services.student_store import StudentStore  # noqa: E402
+
+st.set_page_config(page_title="CogniFlow", page_icon="🎓", layout="wide")
+
+EVENT_STYLE: dict[EventType, tuple[str, str]] = {
+    EventType.DIAGNOSTIC: ("🔍", "#3b82f6"),
+    EventType.PLAN: ("🗺️", "#6366f1"),
+    EventType.RETRIEVAL: ("📚", "#0891b2"),
+    EventType.GENERATED: ("✏️", "#7c3aed"),
+    EventType.EXECUTION: ("⚙️", "#64748b"),
+    EventType.MASTERY: ("📈", "#059669"),
+    EventType.ADAPTATION: ("🧭", "#ea580c"),
+    EventType.GUARD_OVERRIDE: ("🛡️", "#dc2626"),
+    EventType.PREREQ_REDIRECT: ("↩️", "#dc2626"),
+    EventType.PREREQ_RETURN: ("↪️", "#16a34a"),
+    EventType.RECOVERY: ("🩹", "#d97706"),
+    EventType.SESSION_END: ("🏁", "#475569"),
+}
+
+HIDDEN = {EventType.SESSION_START, EventType.AWAITING_STUDENT, EventType.SUBMISSION}
+
+
+def render_event(event) -> None:
+    icon, colour = EVENT_STYLE.get(event.event_type, ("•", "#94a3b8"))
+    bits = " · ".join(
+        f"{k}={v:.3f}" if isinstance(v, float) else f"{k}={v}"
+        for k, v in event.payload.items()
+        if v not in (None, [], {}, "")
+    )
+    st.markdown(
+        f"<div style='border-left:3px solid {colour};padding:.35rem .6rem;margin:.2rem 0;'>"
+        f"<strong>{icon} {event.event_type.value}</strong> "
+        f"<span style='color:#64748b;font-size:.85em'>{event.node}</span><br>"
+        f"<span style='font-size:.85em'>{bits}</span>"
+        + (
+            f"<br><em style='color:#475569;font-size:.85em'>{event.decision_reason}</em>"
+            if event.decision_reason
+            else ""
+        )
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def mastery_table(scores: dict[str, float], highlight: str | None = None) -> None:
+    for skill, value in sorted(scores.items(), key=lambda kv: kv[1]):
+        label = f"**{skill}**" if skill == highlight else skill
+        st.markdown(
+            f"{label} &nbsp; `{value:.3f}`", unsafe_allow_html=True
+        )
+        st.progress(min(max(value, 0.0), 1.0))
+
+
+def path_banner(path: list[str]) -> None:
+    if not path:
+        return
+    st.markdown(
+        "### Learning path\n\n" + "  →  ".join(f"`{s}`" for s in path)
+    )
+    if len(path) >= 3 and path[0] == path[-1]:
+        st.success(
+            f"The agent left **{path[0]}**, remediated **{path[1]}**, and returned. "
+            "That redirect was computed from the prerequisite graph and live mastery "
+            "estimates — it is not scripted."
+        )
+
+
+# ---------------------------------------------------------------- sidebar
+st.sidebar.title("🎓 CogniFlow")
+st.sidebar.caption("Adaptive tutoring with prerequisite-aware remediation")
+mode = st.sidebar.radio("Mode", ["Watch the demo", "Be the student"])
+st.sidebar.divider()
+st.sidebar.markdown("**Starting model**")
+for skill, (mastery, _conf) in DEMO_SEED.items():
+    st.sidebar.text(f"{skill:22} {mastery:.2f}")
+
+
+# ================================================================ watch mode
+if mode == "Watch the demo":
+    st.title("The prerequisite redirect")
+    st.markdown(
+        "A student fails recursion twice. Watch what the agent decides to do about it. "
+        "Only the *student* is scripted — every tutoring decision is computed live."
+    )
+
+    if st.button("▶ Run the scenario", type="primary"):
+        events = EventLog()
+        with st.spinner("Running the real graph…"):
+            result = run_demo(
+                store=StudentStore(":memory:"),
+                events=events,
+                retriever=Retriever(),
+                behaviours=[
+                    Behaviour.FAIL_RUNTIME,
+                    Behaviour.FAIL_WRONG,
+                    Behaviour.SUCCEED,
+                    Behaviour.SUCCEED,
+                    Behaviour.SUCCEED,
+                ],
+                inject_fault_on_turn=3,
+            )
+        st.session_state["watch"] = (events, result)
+
+    if "watch" in st.session_state:
+        events, result = st.session_state["watch"]
+        path_banner(result.skills_visited)
+
+        left, right = st.columns([3, 2])
+        with left:
+            st.subheader("Event stream")
+            for event in events.events:
+                if event.event_type not in HIDDEN:
+                    render_event(event)
+        with right:
+            st.subheader("Mastery movement")
+            for skill in ("recursion", "functions"):
+                before = result.mastery_before.get(skill, 0.0)
+                after = result.mastery_after.get(skill, 0.0)
+                st.metric(skill, f"{after:.3f}", f"{after - before:+.3f}")
+            st.divider()
+            st.subheader("Final model")
+            mastery_table(result.mastery_after, highlight="recursion")
+            st.divider()
+            if events.of_type(EventType.RECOVERY):
+                st.warning(
+                    "An infrastructure failure was injected mid-session. It routed to "
+                    "recovery and left mastery **untouched** — students never pay for "
+                    "our outages."
+                )
+
+# =========================================================== interactive mode
+else:
+    st.title("You are the student")
+    st.markdown(
+        "This is a real session. The graph **checkpoints and halts** while you think, "
+        "then resumes from that checkpoint when you submit."
+    )
+
+    if "app" not in st.session_state:
+        store = StudentStore(":memory:")
+        seed_student(store, "you")
+        events = EventLog()
+        deps = GraphDeps.offline(store, events)
+        deps.retriever = Retriever()
+        st.session_state.update(
+            store=store,
+            events=events,
+            app=build_graph(deps),
+            cfg={"configurable": {"thread_id": "ui-session"}},
+            started=False,
+            state=None,
+        )
+
+    app = st.session_state["app"]
+    cfg = st.session_state["cfg"]
+    events: EventLog = st.session_state["events"]
+
+    target = st.selectbox("Target skill", list(DEMO_SEED), index=list(DEMO_SEED).index("recursion"))
+
+    if not st.session_state["started"]:
+        if st.button("▶ Start session", type="primary"):
+            st.session_state["state"] = app.invoke(
+                initial_state("you", "ui-session", target_skill=target), cfg
+            )
+            st.session_state["started"] = True
+            st.rerun()
+    else:
+        snapshot = app.get_state(cfg)
+        pending = snapshot.next
+        values = snapshot.values
+
+        left, right = st.columns([3, 2])
+
+        with left:
+            if pending:
+                problem = values.get("current_problem") or {}
+                st.info(
+                    f"⏸ **Graph suspended at `{pending[0]}`** — checkpointed to disk, "
+                    "waiting for you."
+                )
+                st.subheader(problem.get("title", "Your task"))
+                st.write(problem.get("prompt", ""))
+                if problem.get("grounding_sources"):
+                    st.caption("Grounded in: " + ", ".join(problem["grounding_sources"]))
+                if problem.get("expected_output"):
+                    st.caption(f"Expected output: `{problem['expected_output']}`")
+
+                code = st.text_area(
+                    "Your code", value=problem.get("starter_code", ""), height=180
+                )
+                if st.button("Submit", type="primary"):
+                    st.session_state["state"] = app.invoke(Command(resume={"code": code}), cfg)
+                    st.rerun()
+            else:
+                st.success(
+                    f"🏁 Session {values.get('session_status', 'finished')} "
+                    f"after {values.get('loop_count', 0)} loops."
+                )
+                if st.button("Start over"):
+                    for key in ("app", "started", "state", "events", "store", "cfg"):
+                        st.session_state.pop(key, None)
+                    st.rerun()
+
+            st.divider()
+            st.subheader("Event stream")
+            for event in events.events[-25:]:
+                if event.event_type not in HIDDEN:
+                    render_event(event)
+
+        with right:
+            st.subheader("What the tutor believes")
+            mastery_table(values.get("mastery_scores", {}), highlight=values.get("target_skill"))
+            st.divider()
+            st.markdown(
+                f"**Target** `{values.get('target_skill')}`  \n"
+                f"**Mode** `{values.get('teaching_mode')}`  \n"
+                f"**Difficulty** `{values.get('difficulty_level')}`  \n"
+                f"**Consecutive failures** `{values.get('consecutive_failures', 0)}`"
+            )
+            stack = values.get("prereq_return_stack") or []
+            if stack:
+                st.warning(
+                    "Detoured from " + " → ".join(f"`{s}`" for s in stack)
+                    + ". The agent will come back."
+                )
+            path_banner(events.skills_visited())

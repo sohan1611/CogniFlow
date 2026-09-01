@@ -224,7 +224,7 @@ behaviour.
 | 5 | LangGraph orchestration, interrupt/resume | ✅ Verified |
 | 6 | Full adaptive loop | ✅ Verified |
 | 7 | Student simulator + ablation study | ✅ Verified |
-| 8 | Event stream, CLI demo, UI | 🔄 Next |
+| 8 | Event stream, CLI demo, UI | ✅ Verified |
 
 **162 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
 isn't installed). Everything marked ✅ is independently test-verified, not self-reported.
@@ -274,6 +274,16 @@ See the whole thing work:
 
 That runs the real graph and then checks its own claims rather than narrating them.
 Expected path: **recursion -> functions -> recursion**.
+
+Or drive it yourself in the browser:
+
+```bash
+.venv/Scripts/python.exe -m streamlit run ui.py
+```
+
+Two modes: **watch** the scripted scenario replay step by step, or **be the student** —
+a real session where the graph checkpoints and halts while you think, then resumes from
+that checkpoint when you submit. The UI renders state; it never decides anything.
 
 Run the tests:
 

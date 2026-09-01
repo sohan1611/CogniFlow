@@ -202,3 +202,22 @@ Newest entries at the bottom. Gists only, never secrets.
   which explains why: fitting improves calibration, the system depends on ranking.
   This is exactly the commitment made in plan section 16.
 - Verified: 162 passed, 1 skipped. Ablation is deterministic across runs.
+
+## 2026-09-02 - Phase 8: observability + UI (Claude direct)
+- Built: ui.py (Streamlit, two modes), demo.py --trace JSONL export, make ui target.
+- VERIFIED IN A REAL BROWSER, not merely imported. Streamlit reports syntax errors in
+  the browser rather than the console, so "it starts" proves nothing. Loaded
+  localhost:8601 and drove it:
+  * Watch mode: renders the full narrative, learning path "recursion -> functions ->
+    recursion", colour-coded event stream, mastery deltas.
+  * Interactive mode: shows "Graph suspended at await_student - checkpointed to disk,
+    waiting for you", the generated problem with its RAG grounding citations, a code
+    box, and the live tutor belief panel. This is the genuine HITL surface.
+- demo.py --trace writes 55 structured events as JSONL. Records decisions and evidence
+  only; no private model reasoning is stored, per the brief.
+- OBSERVATION worth carrying into the freeze: the second generated problem logs
+  repeat=True. The anti-repetition mechanism (recent_problem_hashes) correctly DETECTS
+  the duplicate, but the deterministic template fallback cannot actually vary its
+  output, so with no API key the same problem is reissued. With a live model this
+  resolves itself. Detection works; avoidance needs the model.
+- Verified: 162 passed, 1 skipped.

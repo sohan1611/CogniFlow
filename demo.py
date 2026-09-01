@@ -66,6 +66,7 @@ def main() -> int:
     ap.add_argument("--verify", action="store_true", help="assert the claims, do not just narrate")
     ap.add_argument("--quiet", action="store_true", help="summary only")
     ap.add_argument("--db", default=":memory:", help="student store path")
+    ap.add_argument("--trace", type=Path, help="write the event stream as JSONL")
     args = ap.parse_args()
 
     logging.disable(logging.WARNING)
@@ -84,7 +85,7 @@ def main() -> int:
     store = StudentStore(args.db)
     seed_student(store, "demo-student")
 
-    events = EventLog(echo=False)
+    events = EventLog(path=args.trace, echo=False)
     rule("LIVE EVENT STREAM")
     result = run_demo(
         store=store,
@@ -157,6 +158,12 @@ def main() -> int:
             print(f"{failed} check(s) FAILED")
             return 1
         print("All checks passed. Nothing above was narrated -- it was measured.")
+
+    if args.trace:
+        print()
+        print(f"  Event stream written to {args.trace} ({len(events)} events, JSONL).")
+        print("  Each line is a structured decision record - node, type, payload,")
+        print("  reason, evidence, confidence. No private model reasoning is stored.")
 
     print()
     return 0

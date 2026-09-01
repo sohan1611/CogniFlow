@@ -1,7 +1,7 @@
 # CogniFlow — one command per thing a judge or teammate needs.
 PY := .venv/Scripts/python.exe      # on Linux/macOS: .venv/bin/python
 
-.PHONY: install smoke test ingest demo verify live ablation scan clean
+.PHONY: install smoke test ingest demo verify live ablation ui scan clean
 
 install:            ## create the venv and install pinned dependencies
 	py -3.14 -m venv .venv
@@ -34,3 +34,6 @@ clean:
 
 ablation:           ## the three-arm study plus BKT fitting (costs nothing)
 	$(PY) scripts/run_ablation.py
+
+ui:                 ## Streamlit UI - watch the demo, or be the student yourself
+	$(PY) -m streamlit run ui.py
