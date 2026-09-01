@@ -50,33 +50,53 @@ def decide(ctx: PolicyContext) -> AdaptationDecision:
 
     tripped_limits = _tripped_limits(ctx)
     if tripped_limits:
+        # Report WHY we stopped honestly. A session that ends at mastery 0.88 because
+        # the per-skill attempt cap was reached is a success, not a limit failure, and
+        # saying "limit tripped" there reads as a bug to anyone watching.
+        mastered = mastery >= MASTERY_THRESHOLD and confidence >= CONFIDENCE_THRESHOLD
+        reason = (
+            f"target skill mastered (mastery={mastery:.2f}); session limit also reached: "
+            f"{', '.join(tripped_limits)}"
+            if mastered
+            else f"limit tripped: {', '.join(tripped_limits)}"
+        )
         return AdaptationDecision(
             action=AdaptationAction.COMPLETE,
             target_skill=ctx.target_skill,
-            reason=f"limit tripped: {', '.join(tripped_limits)}",
-            evidence=evidence + [f"limits={','.join(tripped_limits)}"],
+            reason=reason,
+            evidence=evidence + [f"limits={','.join(tripped_limits)}", f"mastered={mastered}"],
             confidence=confidence,
         )
 
-    if success and mastery >= ESCALATE_THRESHOLD:
+    # Returning to the ORIGINAL objective outranks perfecting the detour. Without this
+    # ordering the agent masters the prerequisite and then keeps escalating inside it,
+    # never going back to the skill the student actually came for -- which defeats the
+    # whole point of a prerequisite redirect.
+    if (
+        success
+        and ctx.prereq_return_stack
+        and mastery >= MASTERY_THRESHOLD
+        and confidence >= CONFIDENCE_THRESHOLD
+    ):
+        return AdaptationDecision(
+            action=AdaptationAction.REVISIT_PREREQUISITE,
+            target_skill=ctx.prereq_return_stack[-1],
+            reason="prerequisite mastered, returning to original target",
+            evidence=evidence + [f"return_stack_size={len(ctx.prereq_return_stack)}"],
+            confidence=confidence,
+        )
+
+    if success and mastery >= ESCALATE_THRESHOLD and confidence >= CONFIDENCE_THRESHOLD:
         return AdaptationDecision(
             action=AdaptationAction.ESCALATE_DIFFICULTY,
             target_skill=ctx.target_skill,
             difficulty=_escalated_difficulty(ctx.current_difficulty),
             reason="current skill mastered at escalation threshold",
-            evidence=evidence + [f"mastery>={ESCALATE_THRESHOLD}"],
+            evidence=evidence + [f"mastery>={ESCALATE_THRESHOLD}", f"confidence>={CONFIDENCE_THRESHOLD}"],
             confidence=confidence,
         )
 
     if success and mastery >= MASTERY_THRESHOLD and confidence >= CONFIDENCE_THRESHOLD:
-        if ctx.prereq_return_stack:
-            return AdaptationDecision(
-                action=AdaptationAction.REVISIT_PREREQUISITE,
-                target_skill=ctx.prereq_return_stack[-1],
-                reason="prerequisite mastered, returning to original target",
-                evidence=evidence + [f"return_stack_size={len(ctx.prereq_return_stack)}"],
-                confidence=confidence,
-            )
         return AdaptationDecision(
             action=AdaptationAction.ADVANCE,
             target_skill=ctx.target_skill,

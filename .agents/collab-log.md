@@ -152,3 +152,25 @@ Newest entries at the bottom. Gists only, never secrets.
   weakest_prerequisite picks CONDITIONALS over FUNCTIONS (0.15 vs 0.33 on
   mastery*confidence). The demo seed must raise conditionals so functions is the
   genuine gap - otherwise the agent is right and the script is wrong.
+
+## 2026-09-02 - Phase 6: full adaptive loop + demo (Claude direct)
+- Built: demo_runner.py (reusable driver shared by demo.py AND test_demo_e2e.py, so the
+  thing judges watch is the thing CI checks), demo.py (--verify self-checks), Makefile.
+- TWO REAL BUGS FOUND BY RUNNING THE DEMO, both invisible to per-branch unit tests:
+  1. POLICY ORDERING: ESCALATE_DIFFICULTY was evaluated before the prereq_return_stack
+     check, so once the agent mastered `functions` it kept escalating inside functions
+     and NEVER returned to recursion. The headline behaviour silently did not happen.
+     Fixed by hoisting return-to-original above escalation.
+  2. MISLEADING COMPLETION REASON: a session ending at mastery 0.88 reported
+     "limit tripped: topic_attempts", which reads as a failure. Now distinguishes
+     mastery-achieved from a bare limit trip.
+- Also applied the Phase 5 findings: escalation now requires confidence as well as
+  mastery (one lucky answer used to push BKT past 0.8 at confidence 0.22), and the demo
+  seed raises `conditionals` so `functions` is the genuine weakest prerequisite rather
+  than an artefact of an unseeded default.
+- Verified: 146 passed, 1 skipped. demo.py --verify passes all 7 self-checks.
+  Path: recursion -> functions -> recursion. recursion 0.350 -> 0.877,
+  functions 0.550 -> 0.869, injected SANDBOX_FAILURE left mastery untouched.
+- test_demo_e2e.py asserts on the EVENT STREAM and DURABLE STORE, never on printed
+  text, so a hardcoded narration cannot satisfy it. Includes a determinism test:
+  two identical runs must produce identical paths.

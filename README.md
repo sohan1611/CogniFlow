@@ -102,6 +102,44 @@ If our infrastructure breaks, the student does not pay for it.
 
 ---
 
+## What it actually does
+
+```
+$ python demo.py --verify
+
+Learning path : recursion -> functions -> recursion
+Actions       : RETRY_VARIATION -> REVISIT_PREREQUISITE -> REVISIT_PREREQUISITE -> REASSESS -> COMPLETE
+Session       : COMPLETED in 6 turns
+
+Mastery movement:
+  recursion    0.350 -> 0.877  (up)
+  functions    0.550 -> 0.869  (up)
+
+Injected infrastructure failure:
+  SANDBOX_FAILURE -> routed to recovery, mastery untouched
+
+SELF-VERIFICATION
+  [PASS] visited recursion -> functions -> recursion
+  [PASS] first failure retried, second escalated to prerequisite
+  [PASS] redirect target was chosen as the weakest prerequisite
+  [PASS] returned to the original objective
+  [PASS] infrastructure fault did not move mastery
+  [PASS] student ended ahead on recursion
+  [PASS] remediation was grounded in retrieved material
+```
+
+The student failed recursion twice. The agent did not generate an easier recursion
+problem — it walked the prerequisite graph, found `functions` was the weakest unmastered
+dependency, **reassigned its own objective**, taught functions in a different mode
+(`CODE_TRACE`) grounded in the retrieved functions chapter, absorbed an injected sandbox
+failure without penalising the student, and then came back to recursion and finished.
+
+Only the *student* is scripted — what they submit and when. Every tutoring decision is
+computed from live mastery estimates. The same code path is asserted in
+[`tests/test_demo_e2e.py`](tests/test_demo_e2e.py), so what you watch is what CI checks.
+
+---
+
 ## Status
 
 Built incrementally, deterministic core before anything probabilistic — an agent built
@@ -116,11 +154,11 @@ behaviour.
 | 3 | RAG ingestion and retrieval | ✅ Verified |
 | 4 | LLM provider abstraction, structured outputs | ✅ Verified offline |
 | 5 | LangGraph orchestration, interrupt/resume | ✅ Verified |
-| 6 | Full adaptive loop | 🔄 Next |
-| 7 | Student simulator + ablation study | ⬜ Planned |
+| 6 | Full adaptive loop | ✅ Verified |
+| 7 | Student simulator + ablation study | 🔄 Next |
 | 8 | Event stream, CLI demo, UI | ⬜ Planned |
 
-**134 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
+**146 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
 isn't installed). Everything marked ✅ is independently test-verified, not self-reported.
 
 Phase 2 highlights, each verified by running it rather than by inspection:
@@ -158,6 +196,16 @@ vectors, and that LangGraph's `interrupt` → checkpoint → `resume` cycle genu
 
 > **First run downloads a ~79 MB embedding model** (cached at `~/.cache/chroma/`).
 > This happens once. Pre-warm it before any live demo.
+
+See the whole thing work:
+
+```bash
+.venv/Scripts/python.exe scripts/ingest_corpus.py
+.venv/Scripts/python.exe demo.py --verify
+```
+
+That runs the real graph and then checks its own claims rather than narrating them.
+Expected path: **recursion -> functions -> recursion**.
 
 Run the tests:
 

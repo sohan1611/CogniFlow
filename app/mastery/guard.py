@@ -50,7 +50,13 @@ def _violated_rules(decision: AdaptationDecision, ctx: PolicyContext) -> list[st
     ):
         violations.append("advance_requires_mastery")
 
-    if decision.action == AdaptationAction.ESCALATE_DIFFICULTY and mastery < ESCALATE_THRESHOLD:
+    if decision.action == AdaptationAction.ESCALATE_DIFFICULTY and (
+        mastery < ESCALATE_THRESHOLD or confidence < CONFIDENCE_THRESHOLD
+    ):
+        # Mastery alone is not enough. One lucky answer can push a BKT posterior past
+        # 0.8 while confidence is still ~0.2, and escalating there is the classic
+        # overconfident-tutor failure: the student gets a harder problem on the
+        # strength of a single data point.
         violations.append("escalate_requires_mastery")
 
     if decision.action == AdaptationAction.REVISIT_PREREQUISITE:
