@@ -22,3 +22,20 @@ Newest entries at the bottom. Gists only, never secrets.
 - Note for demo prep: Chroma's all-MiniLM-L6-v2 is a ONE-TIME 79 MB download (167 MB on
   disk) that took several minutes on this connection. Pre-warm the cache before any
   live demo or clean-machine run; it is not needed again afterwards.
+
+## 2026-09-01 23:20 - Work order 1 REVIEWED (Claude)
+- Codex delivered 12 files (~900 LOC app + tests). It could not run anything
+  (CreateProcessAsUserW failed: 5), exactly as the delegation skill predicts.
+- Claude ran verification independently:
+  * pytest: 61 passed in 0.25s
+  * no forbidden imports in app/ (offline confirmed), no TODO/FIXME, no bare except
+  * every module carries a docstring naming its invariant
+  * BKT math read line-by-line against Corbett & Anderson - correct
+- Claude ADDED tests/test_safety_invariant.py (30 adversarial cases, reviewer-authored
+  rather than implementer-authored, to avoid circular testing). Notable case: a bare
+  string "CORRECT" arriving from a JSON round-trip is correctly rejected, because
+  is_student_evidence uses isinstance rather than value comparison.
+- Independent demo check: seeded state (functions 0.55 / loops 0.80 / recursion 0.35)
+  produces RETRY_VARIATION on failure 1 and REVISIT_PREREQUISITE -> functions on
+  failure 2, through real policy code. The redirect is not scripted.
+- Verdict: ACCEPTED. Committed as the first commit; contributor check clean.
