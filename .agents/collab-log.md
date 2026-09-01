@@ -221,3 +221,24 @@ Newest entries at the bottom. Gists only, never secrets.
   output, so with no API key the same problem is reissued. With a live model this
   resolves itself. Detection works; avoidance needs the model.
 - Verified: 162 passed, 1 skipped.
+
+## 2026-09-02 - Phase 9: freeze + submission documents (Claude direct)
+- Wrote docs/BRIEF.md (problem, users, why agentic, measured impact, limitations),
+  docs/ARCHITECTURE.md (Mermaid diagrams that render natively in GitHub - no image
+  files to go stale), docs/DEMO_SCRIPT.md (4:30 script with timings, the exact screen
+  lines to pause on, and a Q&A table), docs/SUBMISSION_CHECKLIST.md.
+- CLEAN-CLONE RELEASE GATE PASSED. Cloned fresh from GitHub into an empty directory
+  with no index and no database - the state a judge actually finds - and ran the
+  documented flow:
+    ingest        -> 16 chunks
+    demo --verify -> 7/7 self-checks, path recursion -> functions -> recursion
+    pytest        -> 162 passed, 1 skipped
+    ablation      -> reproduces (B: 65% gap detection vs A: 0%)
+    check_contributors -> exit 0
+  Nothing depended on state outside the repo.
+- Note: ablation false-redirect reads 30% at n=40 vs 25% at n=80 - small-sample
+  variance, not a regression. The headline numbers (65% vs 0% detection, 10 vs 14
+  median steps) are stable across both.
+- REMAINING BEFORE SUBMISSION: record the video, and run `make live` once a key exists.
+  Everything to date is offline against fallbacks; the real wire format is still
+  unverified and that is stated openly in the checklist and the brief.

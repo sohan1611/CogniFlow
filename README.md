@@ -225,6 +225,7 @@ behaviour.
 | 6 | Full adaptive loop | ✅ Verified |
 | 7 | Student simulator + ablation study | ✅ Verified |
 | 8 | Event stream, CLI demo, UI | ✅ Verified |
+| 9 | Submission documents, clean-clone gate | ✅ Verified |
 
 **162 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
 isn't installed). Everything marked ✅ is independently test-verified, not self-reported.
@@ -310,6 +311,19 @@ cp .env.example .env
 ```
 
 Keys are read from the environment only and are never committed.
+
+---
+
+## Documentation
+
+| | |
+|---|---|
+| [Problem & solution brief](docs/BRIEF.md) | why this problem, why an agent, measured impact |
+| [Architecture](docs/ARCHITECTURE.md) | layers, graph, safety property, Mermaid diagrams |
+| [Demo script](docs/DEMO_SCRIPT.md) | 4:30 video walkthrough with Q&A preparation |
+| [Submission checklist](docs/SUBMISSION_CHECKLIST.md) | release gates and what remains |
+| [Costs](docs/COSTS.md) | zero-rupee build, and what the reserve is for |
+| [Owner's draft](docs/OWNERS_DRAFT.md) | charter, ownership split, cut order |
 
 ---
 

@@ -167,8 +167,9 @@ differentiator. **Never cut the safety invariant tests** — they are the credib
 | 6 - Full loop | DONE. Verified: demo.py --verify runs the real graph and passes 7 self-checks; path is recursion -> functions -> recursion; 12 assertions in test_demo_e2e.py bind to the event stream and durable store, not to printed text |
 | 7 - Simulator + ablation | DONE. 3-arm study over 80 planted-gap students: prerequisite-aware adaptation reaches mastery in 29% fewer attempts, finds the gap 65% of the time vs 0%, halves estimate error, at a 25% false-redirect cost. BKT fitting produced an honest NEGATIVE result; defaults retained. |
 | 8 - Observability + UI | DONE. Streamlit UI verified IN A BROWSER, not just imported: watch mode renders the full redirect narrative; interactive mode shows 'Graph suspended at await_student - checkpointed to disk' and resumes on submit. demo.py --trace exports 55 structured events as JSONL. |
-| 9 - Freeze | NEXT |
-| 10 - Submit | Not started |
+| 9 - Freeze | DONE. BRIEF.md, ARCHITECTURE.md (Mermaid, renders in GitHub), DEMO_SCRIPT.md, SUBMISSION_CHECKLIST.md. CLEAN-CLONE GATE PASSED: fresh clone with no index and no database ran ingest + verify (7/7) + 162 tests + ablation + contributor scan. |
+| 10 - Submit | NEXT: record video, run make live, submit on the 12th |
+
 
 **162 tests passing, 1 skipped** (Docker backend, skips cleanly when unavailable).
 
