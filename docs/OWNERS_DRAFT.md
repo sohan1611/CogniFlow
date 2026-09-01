@@ -158,7 +158,16 @@ differentiator. **Never cut the safety invariant tests** — they are the credib
 
 | Phase | State |
 |---|---|
-| 0 — Foundation | ✅ **Verified.** Deps install clean on Python 3.14.6; Chroma ONNX embeddings (dim 384) and LangGraph interrupt/resume both round-trip |
-| 1 — Domain core | ✅ **Verified.** 61 tests green; recursion → functions redirect confirmed through real policy code |
-| 2 — Sandbox | 🔄 In progress |
-| 3–10 | ⬜ Not started |
+| 0 - Foundation | DONE. Verified: deps install clean on Python 3.14.6; Chroma ONNX embeddings (dim 384) and LangGraph interrupt/resume both round-trip |
+| 1 - Domain core | DONE. Verified: recursion -> functions redirect confirmed through real policy code; 30 adversarial safety-invariant tests |
+| 2 - Sandbox + failure taxonomy | DONE. Verified: classifier exhaustive over all 12 status x started combinations; credential isolation confirmed with a canary key; end-to-end demo beat proven (runtime error and student infinite loop move mastery, injected SANDBOX_FAILURE does not) |
+| 3 - RAG | IN PROGRESS |
+| 4-10 | Not started |
+
+**79 tests passing, 1 skipped** (Docker backend, skips cleanly when unavailable).
+
+### Known issue being managed
+
+Codex cannot read repository files or spawn processes in this environment. Work orders
+must therefore INLINE every existing signature it needs. Phase 2 lost a round to this -
+it guessed the wrong module for the enum imports. Phase 3's spec inlines the API.
