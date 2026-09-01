@@ -1,0 +1,57 @@
+"""CogniFlow settings and sandbox factory.
+
+Invariant: configuration defaults contain no secrets, and sandbox selection never
+pretends Docker hardening exists when Docker is unavailable.
+"""
+
+from __future__ import annotations
+
+import logging
+from functools import lru_cache
+from pathlib import Path
+from typing import Literal
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.tools.sandbox.base import Sandbox
+from app.tools.sandbox.docker_sandbox import DockerSandbox
+from app.tools.sandbox.subprocess_sandbox import SubprocessSandbox
+
+
+logger = logging.getLogger(__name__)
+
+
+class Settings(BaseSettings):
+    """Runtime settings sourced from COGNIFLOW_* environment variables."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="COGNIFLOW_",
+        env_file=(".env.example", ".env"),
+        extra="ignore",
+    )
+
+    db_path: Path = Path("data/cogniflow.db")
+    checkpoint_path: Path = Path("data/checkpoints")
+    chroma_path: Path = Path("data/chroma")
+    sandbox: Literal["subprocess", "docker"] = "subprocess"
+    replay_cache: bool = True
+    primary_provider: str = "offline"
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """Return cached application settings."""
+
+    return Settings()
+
+
+def get_sandbox() -> Sandbox:
+    """Create the configured sandbox, falling back honestly when Docker is absent."""
+
+    settings = get_settings()
+    if settings.sandbox == "docker":
+        docker_sandbox = DockerSandbox()
+        if docker_sandbox.is_available():
+            return docker_sandbox
+        logger.warning("COGNIFLOW_SANDBOX=docker requested but Docker is unavailable; using subprocess")
+    return SubprocessSandbox()

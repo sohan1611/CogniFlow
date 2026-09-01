@@ -39,3 +39,31 @@ Newest entries at the bottom. Gists only, never secrets.
   produces RETRY_VARIATION on failure 1 and REVISIT_PREREQUISITE -> functions on
   failure 2, through real policy code. The redirect is not scripted.
 - Verdict: ACCEPTED. Committed as the first commit; contributor check clean.
+
+## 2026-09-02 - Work order 2: Phase 2 sandbox (Claude -> Codex -> reviewed)
+- Task: sandboxed execution, failure taxonomy, fault injection, classifier, test runner,
+  settings factory, plus tests 5-9 and suite-level test 14.
+- Codex: delivered 9 modules + 4 test files. Could not run anything, AND could not read
+  the Phase 1 files it had to integrate with (same process-spawn block).
+- Review: FOUND A REAL DEFECT. Codex imported StudentOutcome / SystemFault /
+  is_student_evidence from app.models.errors instead of app.models.enums - it had
+  guessed the module layout from the work order because it could not read the files.
+  3 test modules failed at collection.
+- Fix: Claude corrected the import module in 6 files directly rather than spending a
+  round-trip, since Codex cannot read files and would likely repeat the guess.
+- PROCESS LESSON: future work orders must INLINE the relevant existing signatures.
+  Codex cannot inspect the repo, so any spec that says "read file X first" is unusable.
+- Verified independently after the fix:
+  * pytest: 79 passed, 1 skipped (docker, correctly skipped)
+  * classifier exhaustive over all 12 (status x started) combinations: disjointness
+    holds, and `not started` is ALWAYS a SystemFault
+  * ambiguous case correct: TIMEOUT+started -> STUDENT_TIMEOUT, TIMEOUT+not-started
+    -> SANDBOX_FAILURE
+  * SECURITY, empirical canary: parent held sk-ant-SECRET-CANARY, child process read
+    None for every KEY/TOKEN/SECRET var. Student code cannot see credentials.
+  * capability() honestly reports NO network/memory isolation on Windows subprocess
+    rather than claiming isolation it lacks
+  * end-to-end demo beat: runtime error 0.3500 -> 0.2036, student infinite loop
+    0.2036 -> 0.1763, injected SANDBOX_FAILURE blocked by the type system with mastery
+    unchanged at 0.1763
+- Verdict: ACCEPTED after the import fix.
