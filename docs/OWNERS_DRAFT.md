@@ -162,10 +162,11 @@ differentiator. **Never cut the safety invariant tests** — they are the credib
 | 1 - Domain core | DONE. Verified: recursion -> functions redirect confirmed through real policy code; 30 adversarial safety-invariant tests |
 | 2 - Sandbox + failure taxonomy | DONE. Verified: classifier exhaustive over all 12 status x started combinations; credential isolation confirmed with a canary key; end-to-end demo beat proven (runtime error and student infinite loop move mastery, injected SANDBOX_FAILURE does not) |
 | 3 - RAG | DONE. Verified: skill-filtered retrieval isolates correctly in both directions; querying the call stack under skill=functions returns section 3.4 as top hit - the exact material the prerequisite redirect needs; degraded path returns RETRIEVAL_FAILURE without raising |
-| 4 - LLM layer | NEXT |
-| 5-10 | Not started |
+| 4 - LLM layer | DONE offline. Recovery chain proven with a programmable stub: repair-once on schema violation, retry on transient, immediate failover on permanent, deterministic fallback, replay cache. NOT yet verified against a live API - no key present. Run scripts/live_check.py once credentials exist. |
+| 5 - LangGraph | NEXT |
+| 6-10 | Not started |
 
-**92 tests passing, 1 skipped** (Docker backend, skips cleanly when unavailable).
+**121 tests passing, 1 skipped** (Docker backend, skips cleanly when unavailable).
 
 ### Known issue being managed
 

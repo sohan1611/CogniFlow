@@ -91,3 +91,22 @@ Newest entries at the bottom. Gists only, never secrets.
   * degraded path: a store that raises yields degraded=True + RETRIEVAL_FAILURE and
     does NOT propagate the exception
 - Verdict: ACCEPTED after the path-bootstrap fix.
+
+## 2026-09-02 - Phase 4: LLM layer (Claude direct, NOT Codex)
+- Codex 5h quota exhausted, so Claude implemented this phase directly.
+- Built: errors.py (retryable/permanent/malformed classification by exception class,
+  not string matching), cache.py (content-addressed disk replay cache), provider.py
+  (role-based chain: Claude primary, Groq/Gemini free-tier backups; lazy construction
+  so no credentials are needed to import), stub.py (programmable offline caller),
+  structured.py (LLMClient: cache -> repair-once -> retry-with-backoff -> failover ->
+  deterministic fallback, and it NEVER raises).
+- Verified by Claude: 121 passed, 1 skipped. langchain confined to app/llm/provider.py
+  and imported lazily inside _build(). Importing and constructing callers works with
+  zero credentials present.
+- HONEST GAP: no API key exists on this machine, so the real wire format is UNVERIFIED
+  - structured output, adaptive thinking, and the deliberate omission of temperature
+  are all things a stub accepts and a live provider might not. Added
+  scripts/live_check.py to make that a one-command check the moment a key exists.
+  This must be run before any live demo.
+- Note: temperature is deliberately never set. Current Claude models reject sampling
+  parameters with a 400, and LangChain omits the field when it is None.

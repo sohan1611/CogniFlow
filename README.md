@@ -114,13 +114,13 @@ behaviour.
 | 1 | Schemas, skill DAG, BKT mastery, policy, guard | ✅ Verified |
 | 2 | Sandboxed code execution + failure taxonomy | ✅ Verified |
 | 3 | RAG ingestion and retrieval | ✅ Verified |
-| 4 | LLM provider abstraction, structured outputs | 🔄 Next |
-| 5 | LangGraph orchestration, interrupt/resume | ⬜ Planned |
+| 4 | LLM provider abstraction, structured outputs | ✅ Verified offline |
+| 5 | LangGraph orchestration, interrupt/resume | 🔄 Next |
 | 6 | Full adaptive loop | ⬜ Planned |
 | 7 | Student simulator + ablation study | ⬜ Planned |
 | 8 | Event stream, CLI demo, UI | ⬜ Planned |
 
-**92 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
+**121 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
 isn't installed). Everything marked ✅ is independently test-verified, not self-reported.
 
 Phase 2 highlights, each verified by running it rather than by inspection:
@@ -163,6 +163,13 @@ Run the tests:
 
 ```bash
 .venv/Scripts/python.exe -m pytest tests/ -q
+```
+
+The whole suite runs **offline** — no API key, no network, no spend. Once you add a
+key, verify the real wire format with one live call per provider:
+
+```bash
+.venv/Scripts/python.exe scripts/live_check.py
 ```
 
 On Linux/macOS substitute `.venv/bin/python`.
