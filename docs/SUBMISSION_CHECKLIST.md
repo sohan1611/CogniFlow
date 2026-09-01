@@ -31,7 +31,7 @@
 ## Release gates — must all pass before submitting
 
 ```bash
-make test        # 162 passed, 1 skipped
+make test        # 163 passed, 1 skipped
 make verify      # 7/7 self-checks, path recursion -> functions -> recursion
 make ablation    # three-arm table reproduces
 make scan        # exit 0
@@ -64,9 +64,15 @@ exercised — but **no request has ever gone to a real provider**, so the wire f
 unverified.
 
 ```bash
-# add ANTHROPIC_API_KEY to .env, then:
+# Get a FREE key from console.groq.com (or aistudio.google.com), put it in .env:
+#   GROQ_API_KEY=...
 make live
 ```
+
+**Use a free tier.** Groq and Google both offer genuinely free API tiers that are ample
+for this project, and the chain leads with them by default. An Anthropic API key is
+metered pay-per-token and is **billed separately from a Claude Pro/Max subscription** —
+a subscription grants no API access. See [COSTS.md §5](COSTS.md).
 
 **Do this before recording the video.** Two consequences if skipped:
 

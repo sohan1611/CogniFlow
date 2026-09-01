@@ -227,7 +227,7 @@ behaviour.
 | 8 | Event stream, CLI demo, UI | ✅ Verified |
 | 9 | Submission documents, clean-clone gate | ✅ Verified |
 
-**162 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
+**163 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
 isn't installed). Everything marked ✅ is independently test-verified, not self-reported.
 
 Phase 2 highlights, each verified by running it rather than by inspection:
@@ -303,12 +303,23 @@ On Linux/macOS substitute `.venv/bin/python`.
 
 ### Configuration
 
-Copy `.env.example` to `.env` and fill in whichever provider you have.
-**No API key is needed for the tests** — the entire deterministic core runs offline.
+**No API key is needed for the tests or the demo** — the entire deterministic core runs
+offline, and problem generation falls back to templates.
+
+To enable model-authored problems, copy `.env.example` to `.env` and add **one** free
+key:
 
 ```bash
 cp .env.example .env
+# then set GROQ_API_KEY (console.groq.com) or GOOGLE_API_KEY (aistudio.google.com)
+.venv/Scripts/python.exe scripts/live_check.py
 ```
+
+The provider chain leads with **Groq** and **Google Gemini**, both of which have
+genuinely free API tiers, so running CogniFlow costs nothing. An Anthropic API key is
+supported but **optional and metered** — and note it is billed separately from a Claude
+Pro/Max subscription, which grants no API access. Promote it deliberately with
+`COGNIFLOW_PROVIDER_ORDER=anthropic,groq,google`.
 
 Keys are read from the environment only and are never committed.
 

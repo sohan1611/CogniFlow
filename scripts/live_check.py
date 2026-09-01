@@ -76,8 +76,14 @@ def main() -> int:
 
     print()
     if checked == 0:
-        print("No provider credentials configured. Set ANTHROPIC_API_KEY in .env")
-        print("and re-run before relying on any live behaviour.")
+        print("No provider credentials configured.")
+        print()
+        print("Add ONE free key to .env and re-run:")
+        print("  GROQ_API_KEY    -- free tier at console.groq.com")
+        print("  GOOGLE_API_KEY  -- free tier at aistudio.google.com")
+        print()
+        print("ANTHROPIC_API_KEY also works but is metered pay-per-token, and is billed")
+        print("separately from a Claude Pro/Max subscription. It is not required.")
         return 0
     if failures:
         print(f"{failures} of {checked} configured provider(s) FAILED")

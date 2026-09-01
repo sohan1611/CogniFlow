@@ -287,16 +287,37 @@ def test_cache_clear_and_count(tmp_path) -> None:
 
 
 # ---------------------------------------------------------------- provider
-def test_default_chain_leads_with_anthropic_and_has_free_tier_backups() -> None:
+def test_default_chain_leads_with_genuinely_free_tiers() -> None:
+    """Cost is a correctness property here, not a preference.
+
+    An Anthropic API key is metered pay-per-token and is billed SEPARATELY from a
+    Claude Pro/Max subscription -- a subscription grants no API access. Leading the
+    chain with it would quietly turn a zero-cost project into a paid one, so the free
+    tiers go first and Anthropic is opt-in.
+    """
     chain = default_chain(Role.GENERATE)
-    assert [s.provider for s in chain] == ["anthropic", "groq", "google"]
+    assert [s.provider for s in chain] == ["groq", "google", "anthropic"]
+    assert chain[0].provider != "anthropic", "the paid provider must not lead"
     assert all(s.api_key_env for s in chain)
 
 
 def test_thinking_enabled_only_for_reasoning_roles() -> None:
-    assert default_chain(Role.ANALYZE)[0].thinking is True
-    assert default_chain(Role.ADAPT)[0].thinking is True
-    assert default_chain(Role.GENERATE)[0].thinking is False
+    """Thinking is an Anthropic-specific setting, so check the Anthropic rung."""
+    def anthropic_spec(role):
+        return next(s for s in default_chain(role) if s.provider == "anthropic")
+
+    assert anthropic_spec(Role.ANALYZE).thinking is True
+    assert anthropic_spec(Role.ADAPT).thinking is True
+    assert anthropic_spec(Role.GENERATE).thinking is False
+
+
+def test_provider_order_is_configurable() -> None:
+    """Teams holding API credits can promote the paid provider deliberately."""
+    from app.llm.provider import _spec
+
+    order = ["anthropic", "groq"]
+    chain = [_spec(p, Role.GENERATE) for p in order]
+    assert [s.provider for s in chain] == order
 
 
 def test_availability_follows_credentials(monkeypatch) -> None:

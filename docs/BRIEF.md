@@ -91,7 +91,7 @@ Full detail in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 | | |
 |---|---|
-| **162 tests**, all offline | no API key, no network, no spend |
+| **163 tests**, all offline | no API key, no network, no spend |
 | Interrupt/resume | verified **across two OS processes** |
 | Safety invariant | infra failure cannot move mastery — enforced by types, tested adversarially |
 | Sandbox | student code cannot read the parent's API keys (verified with a canary) |
@@ -135,7 +135,7 @@ by requiring more evidence before a detour.
   otherwise. The optional Docker backend provides both.
 - **No live-API verification yet.** Every result here was produced offline against
   deterministic fallbacks and a stub model. `scripts/live_check.py` closes that gap in
-  one command once a key is available.
+  one command using a free Groq or Gemini key — no paid API is required.
 
 ## 7. Responsible use
 

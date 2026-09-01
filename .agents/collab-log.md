@@ -242,3 +242,23 @@ Newest entries at the bottom. Gists only, never secrets.
 - REMAINING BEFORE SUBMISSION: record the video, and run `make live` once a key exists.
   Everything to date is offline against fallbacks; the real wire format is still
   unverified and that is stated openly in the checklist and the brief.
+
+## 2026-09-02 - COST CORRECTION (user caught a real error)
+- The user challenged the "₹0" claim: an Anthropic API key costs money.
+- THEY WERE RIGHT. Claude assumed "Claude is already bought" meant Anthropic API
+  credits. A Claude Pro/Max SUBSCRIPTION and an Anthropic API KEY are separate products
+  with separate billing; a subscription grants no API access. Leading the provider chain
+  with Anthropic would have quietly turned a zero-cost project into a paid one
+  (~$8 realistically: ~$0.35/demo run, ~$7 development).
+- FIXED:
+  * default_chain now leads with GROQ then GOOGLE (both genuinely free tiers), with
+    Anthropic last and opt-in via COGNIFLOW_PROVIDER_ORDER.
+  * A test now enforces it: `assert chain[0].provider != "anthropic"` - cost is treated
+    as a correctness property so this cannot regress silently.
+  * Two existing tests failed on the change and were CORRECT to fail; they encoded the
+    old premise and were updated.
+  * COSTS.md section 5 rewritten to record the error, the subscription-vs-API
+    distinction, and an honest estimate if the team chooses Anthropic anyway.
+  * .env.example, README, BRIEF, SUBMISSION_CHECKLIST and live_check.py all now point
+    at the free tiers first.
+- Verified: 163 passed, 1 skipped. ₹0 now holds without qualification.

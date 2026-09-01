@@ -70,40 +70,57 @@ class StructuredCaller(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# Default chains. Claude leads because it is already paid for (zero marginal cost)
-# and is the strongest at structured output; the free tiers exist to absorb bulk
-# evaluation runs and to keep the demo alive if the primary rate-limits.
-# Model ids for the free tiers are env-overridable because provider catalogues drift.
+# Model ids are env-overridable because provider catalogues drift.
 # ---------------------------------------------------------------------------
 ANTHROPIC_MODEL = os.environ.get("COGNIFLOW_ANTHROPIC_MODEL", "claude-opus-5")
 GROQ_MODEL = os.environ.get("COGNIFLOW_GROQ_MODEL", "llama-3.3-70b-versatile")
 GEMINI_MODEL = os.environ.get("COGNIFLOW_GEMINI_MODEL", "gemini-2.0-flash")
 
 
-def default_chain(role: Role) -> list[ProviderSpec]:
-    """Ordered providers to try for a role."""
+PROVIDER_ORDER = [
+    p.strip()
+    for p in os.environ.get("COGNIFLOW_PROVIDER_ORDER", "groq,google,anthropic").split(",")
+    if p.strip()
+]
+"""Chain order, free tiers FIRST by default.
+
+Groq and Google both offer genuinely free API tiers that are ample for this project.
+Anthropic's API is metered pay-per-token and is billed SEPARATELY from a Claude
+Pro/Max subscription -- a subscription grants no API access. Leading with Anthropic
+would therefore have quietly turned a zero-cost project into a paid one.
+
+Set COGNIFLOW_PROVIDER_ORDER=anthropic,groq,google to promote Anthropic if you do hold
+API credits and want its stronger structured-output behaviour.
+"""
+
+
+def _spec(provider: str, role: Role) -> ProviderSpec:
     thinking = role in (Role.ANALYZE, Role.ADAPT)
-    return [
-        ProviderSpec(
+    if provider == "anthropic":
+        return ProviderSpec(
             provider="anthropic",
             model=ANTHROPIC_MODEL,
             max_tokens=8000,
             thinking=thinking,
             api_key_env="ANTHROPIC_API_KEY",
-        ),
-        ProviderSpec(
-            provider="groq",
-            model=GROQ_MODEL,
-            max_tokens=4000,
-            api_key_env="GROQ_API_KEY",
-        ),
-        ProviderSpec(
+        )
+    if provider == "groq":
+        return ProviderSpec(
+            provider="groq", model=GROQ_MODEL, max_tokens=4000, api_key_env="GROQ_API_KEY"
+        )
+    if provider == "google":
+        return ProviderSpec(
             provider="google",
             model=GEMINI_MODEL,
             max_tokens=4000,
             api_key_env="GOOGLE_API_KEY",
-        ),
-    ]
+        )
+    raise ValueError(f"unknown provider {provider!r}")
+
+
+def default_chain(role: Role) -> list[ProviderSpec]:
+    """Ordered providers to try for a role. Free tiers lead by default."""
+    return [_spec(p, role) for p in PROVIDER_ORDER]
 
 
 @dataclass

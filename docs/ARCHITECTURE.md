@@ -259,4 +259,4 @@ are **not mandatory**. Being able to justify an omission is engineering judgemen
 | The architecture actually helps | Three-arm ablation over 80 planted-gap students |
 | The demo is safe to perform live | Determinism test: identical runs produce identical paths |
 
-**162 tests, all offline** — no API key, no network, no spend.
+**163 tests, all offline** — no API key, no network, no spend.

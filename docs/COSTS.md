@@ -1,7 +1,10 @@
 # CogniFlow — Cost Breakdown
 
-**Budget: ₹2,500 (~$25), excluding Claude (already owned).**
-**Projected spend: ₹0. Reserve retained: ₹2,500.**
+**Budget: ₹2,500 (~$25). Projected spend: ₹0. Reserve retained: ₹2,500.**
+
+> **Note:** an earlier draft assumed a Claude subscription provided API access. It does
+> not — see §5. The provider chain now leads with genuinely free tiers, so the ₹0 figure
+> holds without qualification.
 
 Every component below is open-source, runs locally, or sits inside a free tier. The
 constraint that actually binds is not the rupee figure — it is the design rule it
@@ -14,8 +17,9 @@ implies: **no GPU training, no paid data feeds, no paid third-party APIs.**
 | # | Component | Choice | Why it is free | Cost |
 |---|---|---|---|---|
 | 1 | Orchestration | LangGraph 1.2.11 + `langgraph-checkpoint-sqlite` 3.1.1 | MIT | ₹0 |
-| 2 | LLM — primary | Claude via `langchain-anthropic` 1.7.0 | Already owned → ₹0 marginal | ₹0 |
-| 3 | LLM — bulk eval | Groq / Gemini free tiers | Free tier covers cohort runs | ₹0 |
+| 2 | LLM — primary | **Groq free tier** (`langchain-groq`) | Genuinely free API tier | **₹0** |
+| 3 | LLM — fallback | **Google Gemini free tier** (AI Studio) | Genuinely free API tier | **₹0** |
+| 3b | LLM — optional | Anthropic API | ⚠️ **Metered, pay-per-token. NOT covered by a Claude Pro/Max subscription.** Opt-in only. | see §5 |
 | 4 | **Embeddings** | Chroma built-in ONNX (`all-MiniLM-L6-v2`) | Local inference, no API calls, **no PyTorch** | ₹0 |
 | 5 | **Vector store** | Chroma 1.5.9, local persistent | Runs in-process | ₹0 |
 | 6 | Code sandbox | `subprocess` (default), Docker (opt-in) | stdlib / Docker CE free | ₹0 |
@@ -31,10 +35,10 @@ implies: **no GPU training, no paid data feeds, no paid third-party APIs.**
 
 | Activity | Volume | Provider | Cost |
 |---|---|---|---|
-| Development / debugging | ~500 calls | Claude (owned) + disk replay cache | ₹0 |
-| Ablation cohort, 3 arms | policy-only, no content generation | Groq / Gemini free tier | ₹0 |
+| Development / debugging | ~500 calls | Groq free tier + disk replay cache | ₹0 |
+| Ablation cohort, 3 arms | policy-only, no model calls at all | none | ₹0 |
 | BKT parameter fitting | fully offline (EM on synthetic trajectories) | none | ₹0 |
-| Demo runs | ~15 calls each | Claude (owned) | ₹0 |
+| Demo runs | ~15 calls each | Groq free tier | ₹0 |
 | | | **Run subtotal** | **₹0** |
 
 ## 3. Reserve — what the ₹2,500 is actually held for
@@ -55,7 +59,52 @@ no paid embeddings API · no paid data feeds · no PyTorch · no paid code sandb
 
 ---
 
-## 5. Corrections applied to the original cost estimate
+## 5. Correction: a Claude subscription is not an API key
+
+**An earlier version of this document was wrong**, and the error is worth recording
+because it would have quietly turned a zero-cost project into a paid one.
+
+The plan assumed "Claude is already paid for" meant Anthropic API access. It does not.
+These are separate products with separate billing:
+
+| | What it covers | Cost here |
+|---|---|---|
+| **Claude Pro / Max subscription** | claude.ai and Claude Code | already held; grants **no API access** |
+| **Anthropic API key** | `api.anthropic.com`, metered per token | a **separate purchase** |
+
+**What changed as a result:** the provider chain now leads with **Groq**, then **Google
+Gemini** — both of which offer genuinely free API tiers ample for this project — with
+Anthropic last and opt-in. A test now enforces that the paid provider cannot lead, so
+this cannot regress silently:
+
+```python
+assert chain[0].provider != "anthropic", "the paid provider must not lead"
+```
+
+### If you do want to use the Anthropic API anyway
+
+It is stronger at structured output. Rough estimate at Claude Opus 5 rates
+($5 / $10⁶ input, $25 / $10⁶ output), ~2K in and ~500 out per call:
+
+| | Calls | Estimate |
+|---|---|---|
+| One demo run | ~15 | ~$0.35 (~₹30) |
+| Development and tuning | ~300 | ~$7 (~₹600) |
+| **Total if adopted** | | **~$8, well inside the ₹2,500 reserve — but not ₹0** |
+
+Enable it deliberately:
+
+```bash
+COGNIFLOW_PROVIDER_ORDER=anthropic,groq,google
+```
+
+**Recommendation: don't.** The free tiers are sufficient, the architecture is
+provider-agnostic by design, and the judging criteria reward the system, not the model
+behind it.
+
+---
+
+## 6. Corrections applied to the original cost estimate
 
 The initial estimate reached the right total but contained three errors and two
 omissions. Recorded here because each changed a real decision:
