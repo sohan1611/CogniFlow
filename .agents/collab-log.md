@@ -110,3 +110,16 @@ Newest entries at the bottom. Gists only, never secrets.
   This must be run before any live demo.
 - Note: temperature is deliberately never set. Current Claude models reject sampling
   parameters with a 400, and LangChain omits the field when it is None.
+
+## 2026-09-02 - RULE 1 check hardened (Claude)
+- The AGENTS.md pre-push grep was FALSE-POSITIVING: `grep -i claude` matched ordinary
+  commit prose ("Chain leads with Claude", "current Claude models reject sampling"),
+  which are legitimate references to a model, not attribution.
+- Why that mattered: a check that cries wolf gets ignored, and an ignored check is
+  exactly how a real violation reaches main.
+- Replaced with scripts/check_contributors.py, which inspects the fields that actually
+  determine authorship: author/committer identity, attribution trailers, tracked bot
+  config. Whitelists the root commit's GitHub web-UI committer explicitly (author is
+  human, and GitHub attributes by author).
+- SELF-TESTED in a throwaway repo: clean commit mentioning Claude -> exit 0;
+  Co-Authored-By trailer -> exit 1 and named; dependabot[bot] author -> exit 1 and named.

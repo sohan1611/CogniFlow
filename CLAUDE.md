@@ -33,13 +33,22 @@ Nothing else may ever appear in GitHub's contributor list.
 hackathon submission judged partly on the team's own work (rulebook §10, originality
 and fair play). A bot in that list is a question the team should never have to answer.
 
-**Before any push, verify:**
+**Before any push, run:**
 
 ```bash
-git log --format='%an <%ae>%n%b' | grep -iE 'co-authored-by|claude|codex|bot|noreply' || echo "clean"
+.venv/Scripts/python.exe scripts/check_contributors.py
 ```
 
-Expect `clean`. If anything matches, rewrite the history before pushing.
+Exits 0 when clean, 1 on any violation, and prints exactly what is wrong.
+
+Do **not** substitute a naive `git log | grep -i claude`. Our commit messages legitimately
+discuss Claude and Codex as *models and tools*, so that grep false-positives on ordinary
+technical prose - and a check that cries wolf is a check people learn to ignore. The
+script inspects the fields that actually determine authorship: author and committer
+identity, attribution trailers, and tracked bot config files.
+
+It is self-tested: a clean commit whose message mentions Claude passes, while a
+`Co-Authored-By:` trailer and a `dependabot[bot]` author are both caught.
 
 ---
 
