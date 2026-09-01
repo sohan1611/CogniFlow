@@ -44,6 +44,7 @@ SHOWN = {
     EventType.RETRIEVAL,
     EventType.GENERATED,
     EventType.EXECUTION,
+    EventType.MISCONCEPTION,
     EventType.MASTERY,
     EventType.ADAPTATION,
     EventType.GUARD_OVERRIDE,

@@ -288,3 +288,27 @@ Newest entries at the bottom. Gists only, never secrets.
   guard caught the model doing something the rules never would.
 - Added --live to demo_runner and demo.py; offline remains the default.
 - 165 passed, 1 skipped.
+
+## 2026-09-02 - Misconception diagnosis (Claude direct)
+- AUDIT FIRST: compared the submission docs against the code and found a real honesty
+  gap. BRIEF.md and ARCHITECTURE.md both claimed THREE model call sites; only TWO
+  existed. MisconceptionAnalysis was imported but unused, detected_misconceptions was
+  declared but never written, and skill nodes never accumulated misconceptions - all
+  of which the original spec explicitly asked for.
+- Built app/mastery/misconceptions.py: 7 deterministic patterns keyed on interpreter
+  evidence. Rules run FIRST; the model is consulted only for failures they cannot name.
+  A RecursionError means a missing base case - that is what the exception means, not an
+  opinion, so paying a model to infer it adds cost and nondeterminism for nothing.
+- KEY PROPERTY: a misconception implicates the skill ACTUALLY at fault, which is usually
+  not the one being practised. "NoneType + int" during recursion implicates FUNCTIONS.
+  The redirect reason changed from "repeated failures indicate an unmastered
+  prerequisite" to "diagnosed misconception implicates functions" - heuristic to
+  diagnosis.
+- The hint is EVIDENCE, NOT AN OVERRIDE: it can only promote a genuine unmastered
+  prerequisite, so a bad diagnosis can never redirect somewhere arbitrary. Tested.
+- TWO MORE GUARD GAPS found by running live:
+  * The model redirected on a SINGLE failure. Added
+    premature_redirect_without_evidence - one bad answer is noise, one bad answer plus
+    a diagnosed cause is evidence.
+  * demo.py and ui.py were not displaying MISCONCEPTION events at all.
+- 182 passed, 1 skipped. demo.py --live --verify passes all 7 checks.

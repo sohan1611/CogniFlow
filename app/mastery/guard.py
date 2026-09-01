@@ -71,6 +71,18 @@ def _violated_rules(decision: AdaptationDecision, ctx: PolicyContext) -> list[st
         # strength of a single data point.
         violations.append("escalate_requires_mastery")
 
+    # Redirecting on a SINGLE failure is only justified when the student's actual
+    # mistake implicates that prerequisite. One bad answer is noise; one bad answer plus
+    # a diagnosed cause is evidence. Without this, a model will happily abandon a skill
+    # after one wobble -- which is the mirror image of never redirecting at all.
+    if (
+        decision.action == AdaptationAction.REVISIT_PREREQUISITE
+        and ctx.consecutive_failures < 2
+        and not ctx.prereq_return_stack
+        and ctx.misconception_hint != decision.target_skill
+    ):
+        violations.append("premature_redirect_without_evidence")
+
     if decision.action == AdaptationAction.REVISIT_PREREQUISITE:
         unmastered = ctx.graph.unmastered_prerequisites(ctx.target_skill, MASTERY_THRESHOLD)
         if not ctx.prereq_return_stack and decision.target_skill not in unmastered:

@@ -77,7 +77,13 @@ def test_18_redirect_is_caused_by_repeated_failure_not_by_a_script(demo) -> None
     event = redirects[0]
     assert event.payload["from_skill"] == "recursion"
     assert event.payload["to_skill"] == "functions"
-    assert "prerequisite" in (event.decision_reason or "").lower()
+
+    # Assert on SUBSTANCE, not on a phrase. The redirect is justified either by the
+    # prerequisite heuristic or by a diagnosed misconception implicating the skill --
+    # both are legitimate, and pinning the exact wording makes the test brittle against
+    # improvements to the explanation.
+    reason = (event.decision_reason or "").lower()
+    assert "prerequisite" in reason or "misconception" in reason, reason
 
 
 def test_18_action_sequence_matches_the_intended_pedagogy(demo) -> None:

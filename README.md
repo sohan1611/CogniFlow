@@ -72,8 +72,9 @@ embedding-based lookup for the rules:
 - **No fuzzy retrieval over rules** — prerequisite relations and mastery thresholds must
   be applied *exactly*. Approximate matching there would be a correctness regression.
 
-Only **three call sites use an LLM at all**: problem generation, conceptual grading, and
-misconception analysis. Diagnosis, routing, mastery arithmetic, and prerequisite
+Only **three call sites use an LLM at all**: problem generation, misconception analysis,
+and the adaptation proposal that the guard then validates. Code grading runs by
+execution, and misconception analysis tries deterministic patterns first. Diagnosis, routing, mastery arithmetic, and prerequisite
 selection are deterministic and unit-tested.
 
 *We do not use an LLM where arithmetic is already correct and free.*
@@ -230,7 +231,7 @@ behaviour.
 | 8 | Event stream, CLI demo, UI | ✅ Verified |
 | 9 | Submission documents, clean-clone gate | ✅ Verified |
 
-**165 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
+**182 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
 isn't installed). Everything marked ✅ is independently test-verified, not self-reported.
 
 Phase 2 highlights, each verified by running it rather than by inspection:

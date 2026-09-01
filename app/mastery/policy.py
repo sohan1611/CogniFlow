@@ -37,6 +37,15 @@ class PolicyContext:
     prereq_depth: int
     prereq_return_stack: list[str]
     current_difficulty: Difficulty = Difficulty.MEDIUM
+    misconception_hint: str | None = None
+    """A skill implicated by the student's actual mistake, if one was diagnosed.
+
+    This is stronger evidence than the mastery heuristic alone. "Your recursive call is
+    computed but not returned" points at `functions` because of what the student DID,
+    whereas mastery*confidence only says which prerequisite looks weakest on paper. When
+    the two disagree, direct evidence of the error wins -- but only if the hint names a
+    genuine, unmastered prerequisite, so it can never redirect somewhere arbitrary.
+    """
 
 
 def decide(ctx: PolicyContext) -> AdaptationDecision:
@@ -119,14 +128,26 @@ def decide(ctx: PolicyContext) -> AdaptationDecision:
         )
 
     if failure and ctx.consecutive_failures >= 2:
+        unmastered = ctx.graph.unmastered_prerequisites(ctx.target_skill, MASTERY_THRESHOLD)
         weakest = ctx.graph.weakest_prerequisite(ctx.target_skill, MASTERY_THRESHOLD)
+
+        # Direct evidence of the mistake outranks the mastery heuristic, but only when
+        # it names a real unmastered prerequisite of the skill in question.
+        hinted = ctx.misconception_hint
+        if hinted and hinted in unmastered:
+            weakest = hinted
+
         if weakest is not None and ctx.prereq_depth < MAX_PREREQ_DEPTH:
             return AdaptationDecision(
                 action=AdaptationAction.REVISIT_PREREQUISITE,
                 target_skill=weakest,
                 teaching_mode=TeachingMode.CODE_TRACE,
                 difficulty=Difficulty.EASY,
-                reason="repeated failures indicate an unmastered prerequisite",
+                reason=(
+                f"diagnosed misconception implicates '{weakest}'"
+                if ctx.misconception_hint == weakest
+                else "repeated failures indicate an unmastered prerequisite"
+            ),
                 evidence=evidence + [
                     f"consecutive_failures={ctx.consecutive_failures}",
                     f"weakest_prerequisite={weakest}",

@@ -102,13 +102,14 @@ flowchart TD
 | `generate_problem` | ❌ **LLM** | Author a task grounded in retrieved material |
 | `await_student` | ✅ | `interrupt()` — checkpoint and halt |
 | `execute_and_grade` | ✅ tool | Run in sandbox, grade by test cases |
+| `analyze_misconception` | **hybrid** | Names the misunderstanding; rules first, model only where judgement is needed |
 | `update_mastery` | ✅ | BKT posterior + immediate write-through |
 | `adapt` | **guarded** | Model proposes; deterministic guard validates |
 | `recover` | ✅ | Absorb a `SystemFault` without touching mastery |
 | `finalize` | ✅ | Close the session with an honest status |
 
-> Grading prose answers and misconception analysis are the other two model call sites;
-> in the current build code grading runs by execution, which is stronger.
+> Code grading runs by execution rather than by asking a model whether the code looks
+> right, which is stronger. The third model call site is misconception analysis.
 
 ---
 
@@ -177,7 +178,46 @@ something odd on stage**, because routing is deterministic.
 
 ---
 
-## 6. Persistence — split by lifetime
+## 5b. Misconception diagnosis - what makes the redirect causal
+
+Repeated failure tells you *that* something is wrong. It does not tell you *what*.
+`analyze_misconception` closes that gap, and it is deliberately a **hybrid**:
+
+**Deterministic patterns run first.** A `RecursionError` means a missing or unreachable
+base case - that is what the exception *means*, not a matter of opinion. Asking a model
+to infer it would add latency, cost, and a different answer each run to a settled
+question. The model is consulted only for failures the rules cannot name.
+
+**A misconception implicates the skill actually at fault, which is often not the skill
+being practised:**
+
+| Signature | Misconception | Implicates |
+|---|---|---|
+| `TypeError: ... 'NoneType' and 'int'` | recursive call computed but not returned | **`functions`** |
+| `RecursionError` | no reachable base case | `conditionals` |
+| timeout with the process running | loop condition never false | `loops` |
+| `NameError` | name never defined, or defined in another scope | `variables` |
+
+That first row is the whole thesis in one line. A student failing recursion because
+their recursive call returns `None` does not have a recursion problem - they have a
+`return` problem, which is a functions problem wearing a recursion costume.
+
+The diagnosis feeds prerequisite selection, so the redirect reason changes from
+*"repeated failures indicate an unmastered prerequisite"* to
+*"diagnosed misconception implicates 'functions'"*.
+
+**The hint is evidence, not an override.** It can only promote a skill that is genuinely
+an unmastered prerequisite, so a bad diagnosis can never send a student somewhere
+arbitrary. Two guard rules police the boundary:
+`premature_redirect_without_evidence` (a single failure justifies a detour only when a
+misconception implicates that prerequisite) and `must_return_to_original_objective`.
+
+Misconceptions persist on the skill node, surviving the session and informing future
+problem generation.
+
+---
+
+## 6. Persistence - split by lifetime
 
 | | Session state | Durable student state |
 |---|---|---|
@@ -259,4 +299,4 @@ are **not mandatory**. Being able to justify an omission is engineering judgemen
 | The architecture actually helps | Three-arm ablation over 80 planted-gap students |
 | The demo is safe to perform live | Determinism test: identical runs produce identical paths |
 
-**163 tests, all offline** — no API key, no network, no spend.
+**182 tests, all offline** — no API key, no network, no spend.

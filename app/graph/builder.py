@@ -81,6 +81,7 @@ def build_graph(deps: GraphDeps, checkpointer=None):
     g.add_node("generate_problem", N.make_generate_problem(deps))
     g.add_node("await_student", N.make_await_student(deps))
     g.add_node("execute_and_grade", N.make_execute_and_grade(deps))
+    g.add_node("analyze_misconception", N.make_analyze_misconception(deps))
     g.add_node("update_mastery", N.make_update_mastery(deps))
     g.add_node("adapt", N.make_adapt(deps))
     g.add_node("recover", N.make_recover(deps))
@@ -102,8 +103,12 @@ def build_graph(deps: GraphDeps, checkpointer=None):
     g.add_conditional_edges(
         "execute_and_grade",
         route_evidence,
-        {"update_mastery": "update_mastery", "recover": "recover"},
+        {"update_mastery": "analyze_misconception", "recover": "recover"},
     )
+    # Diagnosis runs on the student-evidence path only, BEFORE mastery updates, so the
+    # misconception is available to the adaptation decision that follows. It is
+    # non-fatal: if it yields nothing, mastery still updates.
+    g.add_edge("analyze_misconception", "update_mastery")
     g.add_edge("update_mastery", "adapt")
 
     g.add_conditional_edges(

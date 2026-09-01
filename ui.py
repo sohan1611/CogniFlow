@@ -44,6 +44,7 @@ EVENT_STYLE: dict[EventType, tuple[str, str]] = {
     EventType.RETRIEVAL: ("📚", "#0891b2"),
     EventType.GENERATED: ("✏️", "#7c3aed"),
     EventType.EXECUTION: ("⚙️", "#64748b"),
+    EventType.MISCONCEPTION: ("🧠", "#be185d"),
     EventType.MASTERY: ("📈", "#059669"),
     EventType.ADAPTATION: ("🧭", "#ea580c"),
     EventType.GUARD_OVERRIDE: ("🛡️", "#dc2626"),

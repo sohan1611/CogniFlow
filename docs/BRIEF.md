@@ -91,11 +91,12 @@ Full detail in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 | | |
 |---|---|
-| **163 tests**, all offline | no API key, no network, no spend |
+| **182 tests**, all offline | no API key, no network, no spend |
 | Interrupt/resume | verified **across two OS processes** |
 | Safety invariant | infra failure cannot move mastery — enforced by types, tested adversarially |
 | Sandbox | student code cannot read the parent's API keys (verified with a canary) |
 | RAG | skill-filtered retrieval with citations back to the source page |
+| Misconception diagnosis | names the cause and implicates the responsible skill, making the redirect causal rather than heuristic |
 | Evaluation | three-arm ablation over 80 simulated students with planted gaps |
 
 ## 5. Expected impact

@@ -57,6 +57,7 @@ from app.models.schemas import (
     SkillNode,
 )
 from app.services.events import EventType
+from app.mastery.misconceptions import detect
 from app.tools.sandbox.classifier import classify_with_expectation
 from app.tools.sandbox.runner import run_test_cases
 
@@ -83,6 +84,18 @@ def _difficulty_for(mastery: float) -> Difficulty:
 
 
 # ---------------------------------------------------------------- nodes
+def _latest_hint(state: AgentState, skill: str) -> str | None:
+    """The most recently implicated prerequisite for this skill, if any.
+
+    Only the current skill's diagnoses count: a misconception recorded while practising
+    something else says nothing about why THIS skill is failing.
+    """
+    for entry in reversed(state.get("detected_misconceptions", [])):
+        if entry.get("skill") == skill and entry.get("implicates"):
+            return str(entry["implicates"])
+    return None
+
+
 def make_load_student(deps: GraphDeps) -> Node:
     """Hydrate durable mastery into session state."""
 
@@ -429,6 +442,129 @@ def make_execute_and_grade(deps: GraphDeps) -> Node:
     return execute_and_grade
 
 
+def make_analyze_misconception(deps: GraphDeps) -> Node:
+    """LLM call site 3: name what the student actually misunderstands.
+
+    Reached only on the student-evidence path, and only after a failure -- there is
+    nothing to diagnose about a correct answer.
+
+    Deterministic patterns run FIRST. A RecursionError means a missing base case; that
+    is what the exception means, not a matter of opinion, and asking a model to infer it
+    would add cost and nondeterminism to a settled question. The model is consulted only
+    when the rules cannot name the failure.
+
+    This node is deliberately non-fatal. A misconception is useful colour, not evidence:
+    if analysis fails entirely the session continues and mastery still updates, because
+    the student's submission was real regardless of whether we could explain it.
+    """
+
+    def analyze_misconception(state: AgentState) -> dict[str, Any]:
+        raw = state.get("error_type") or ""
+        try:
+            outcome = StudentOutcome(raw)
+        except ValueError:
+            return {}
+        if outcome == StudentOutcome.CORRECT:
+            return {}
+
+        skill = state["target_skill"]
+        assert skill is not None
+        execution = state.get("execution_result") or {}
+        code = state.get("student_code") or ""
+
+        found = detect(
+            code=code,
+            stdout=str(execution.get("stdout", "")),
+            stderr=str(execution.get("stderr", "")),
+            outcome=outcome,
+        )
+
+        if found is not None:
+            analysis = MisconceptionAnalysis(
+                misconception=found.label,
+                evidence=[f"pattern:{found.key}", f"outcome:{outcome.value}"],
+                likely_prerequisite_gap=found.prerequisite_hint,
+                confidence=0.9,
+            )
+            source = "deterministic"
+        else:
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You name the single specific misunderstanding behind a failed "
+                        "programming submission. Be concrete about what the student "
+                        "believes that is untrue. Do not restate the error message."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Skill being practised: {skill}\n"
+                        f"Outcome: {outcome.value}\n"
+                        f"Their code:\n{code[:1200]}\n\n"
+                        f"stderr:\n{str(execution.get('stderr', ''))[:600]}\n"
+                        f"stdout:\n{str(execution.get('stdout', ''))[:300]}"
+                    ),
+                },
+            ]
+            result = deps.llm(Role.ANALYZE).call_structured(
+                MisconceptionAnalysis,
+                messages,
+                fallback=MisconceptionAnalysis(
+                    misconception=f"unresolved difficulty with {skill}",
+                    evidence=[f"outcome:{outcome.value}"],
+                    confidence=0.2,
+                ),
+            )
+            analysis = result.value  # type: ignore[assignment]
+            assert isinstance(analysis, MisconceptionAnalysis)
+            source = result.provider_used or "fallback"
+
+        # Record it on the skill itself, so it persists across sessions and can inform
+        # future problem generation. Deduplicated: repeating the same misconception is
+        # signal about frequency, not new information.
+        skills = dict(state.get("skill_graph", {}))
+        node_data = dict(skills.get(skill, {}))
+        existing = list(node_data.get("misconceptions", []))
+        if analysis.misconception not in existing:
+            existing.append(analysis.misconception)
+            node_data["misconceptions"] = existing[-5:]
+            skills[skill] = node_data
+            try:
+                deps.store.save_skill(state["student_id"], SkillNode(**node_data))
+            except Exception as exc:  # noqa: BLE001 - colour must not break a session
+                logger.warning("could not persist misconception: %s", exc)
+
+        deps.events.emit(
+            "analyze_misconception",
+            EventType.MISCONCEPTION,
+            {
+                "skill": skill,
+                "misconception": analysis.misconception,
+                "implicates": analysis.likely_prerequisite_gap,
+                "source": source,
+            },
+            evidence=analysis.evidence,
+            confidence=analysis.confidence,
+        )
+
+        return {
+            "skill_graph": skills,
+            "detected_misconceptions": [
+                *state.get("detected_misconceptions", []),
+                {
+                    "skill": skill,
+                    "misconception": analysis.misconception,
+                    "implicates": analysis.likely_prerequisite_gap,
+                    "confidence": analysis.confidence,
+                },
+            ],
+        }
+
+    return analyze_misconception
+
+
 def make_update_mastery(deps: GraphDeps) -> Node:
     """The ONLY node that changes a mastery score.
 
@@ -510,6 +646,7 @@ def make_adapt(deps: GraphDeps) -> Node:
             prereq_depth=state.get("prereq_depth", 0),
             prereq_return_stack=list(state.get("prereq_return_stack", [])),
             current_difficulty=Difficulty(state.get("difficulty_level", Difficulty.MEDIUM)),
+            misconception_hint=_latest_hint(state, skill),
         )
 
         rule_based = policy.decide(ctx)
