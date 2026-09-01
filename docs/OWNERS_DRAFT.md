@@ -163,10 +163,11 @@ differentiator. **Never cut the safety invariant tests** — they are the credib
 | 2 - Sandbox + failure taxonomy | DONE. Verified: classifier exhaustive over all 12 status x started combinations; credential isolation confirmed with a canary key; end-to-end demo beat proven (runtime error and student infinite loop move mastery, injected SANDBOX_FAILURE does not) |
 | 3 - RAG | DONE. Verified: skill-filtered retrieval isolates correctly in both directions; querying the call stack under skill=functions returns section 3.4 as top hit - the exact material the prerequisite redirect needs; degraded path returns RETRIEVAL_FAILURE without raising |
 | 4 - LLM layer | DONE offline. Recovery chain proven with a programmable stub: repair-once on schema violation, retry on transient, immediate failover on permanent, deterministic fallback, replay cache. NOT yet verified against a live API - no key present. Run scripts/live_check.py once credentials exist. |
-| 5 - LangGraph | NEXT |
-| 6-10 | Not started |
+| 5 - LangGraph | DONE. Verified: graph suspends at await_student and a genuinely SEPARATE OS PROCESS resumes the same thread from the SQLite checkpoint; every SystemFault routes to recover and leaves mastery untouched; state is JSON-serializable end to end |
+| 6 - Full loop | NEXT |
+| 7-10 | Not started |
 
-**121 tests passing, 1 skipped** (Docker backend, skips cleanly when unavailable).
+**134 tests passing, 1 skipped** (Docker backend, skips cleanly when unavailable).
 
 ### Known issue being managed
 

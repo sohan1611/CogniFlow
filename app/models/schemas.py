@@ -121,3 +121,48 @@ class RetrievedEvidence(BaseModel):
                 seen.add(citation)
                 citations.append(citation)
         return citations
+
+
+class GeneratedProblem(BaseModel):
+    """A task authored for one student at one moment.
+
+    Invariant: `grounding_sources` records which curriculum material informed this
+    problem, so a generated task can always be traced back to the page that taught it.
+    """
+
+    title: str
+    prompt: str
+    skill: str
+    difficulty: Difficulty
+    assessment_type: AssessmentType
+    starter_code: str = ""
+    test_cases: list[dict[str, str]] = Field(default_factory=list)
+    expected_output: str = ""
+    grounding_sources: list[str] = Field(default_factory=list)
+
+    def fingerprint(self) -> str:
+        """Stable hash of the task's substance, used to avoid re-issuing near-identical
+        problems. Deliberately excludes title and sources, which can differ while the
+        underlying exercise is the same."""
+        import hashlib
+
+        basis = f"{self.skill}|{self.difficulty}|{self.assessment_type}|{self.prompt.strip().lower()}"
+        return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
+
+
+class GradeResult(BaseModel):
+    """Outcome of evaluating one submission."""
+
+    passed: bool
+    score: float = Field(ge=0.0, le=1.0)
+    feedback: str = ""
+    failing_case: str | None = None
+
+
+class MisconceptionAnalysis(BaseModel):
+    """What the student appears to misunderstand, and why we think so."""
+
+    misconception: str
+    evidence: list[str] = Field(default_factory=list)
+    likely_prerequisite_gap: str | None = None
+    confidence: float = Field(ge=0.0, le=1.0, default=0.5)

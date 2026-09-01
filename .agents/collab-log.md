@@ -123,3 +123,32 @@ Newest entries at the bottom. Gists only, never secrets.
   human, and GitHub attributes by author).
 - SELF-TESTED in a throwaway repo: clean commit mentioning Claude -> exit 0;
   Co-Authored-By trailer -> exit 1 and named; dependabot[bot] author -> exit 1 and named.
+
+## 2026-09-02 - Phase 5: LangGraph orchestration (Claude direct)
+- Built: state.py (serializable AgentState), events.py (structured CogniEvent stream),
+  student_store.py (durable SQLite mastery, write-through), deps.py (dependency
+  injection so nodes never build their own collaborators), nodes.py (11 nodes),
+  builder.py (conditional edges + three independent loop ceilings + checkpointing).
+- REAL BUG FOUND AND FIXED during bring-up: LangGraph warned
+  "Deserializing unregistered type app.models.enums.Difficulty ... will be blocked in a
+  future version". StrEnum members were reaching the checkpoint via model_dump() and
+  direct enum assignment. Fixed by storing plain strings in state and using
+  model_dump(mode="json"). Confirmed zero serialization warnings afterwards. Left
+  unfixed this would have become a hard failure on a LangGraph upgrade - i.e. exactly
+  the kind of thing that breaks a demo after an unrelated dependency bump.
+- Verified: 134 passed, 1 skipped.
+  * TEST 16 resumes in a genuinely SEPARATE OS PROCESS (subprocess with a cold
+    interpreter reading the same SQLite checkpoint) - in-process resume would only
+    prove the object stayed in memory.
+  * TEST 15 checkpoint survives closing and reopening the saver; pending node preserved.
+  * route_evidence checked EXHAUSTIVELY over every StudentOutcome and every SystemFault.
+  * injected SANDBOX_FAILURE through real graph routing: mastery unchanged, recovery
+    node reached, mastery node never ran, no attempt logged.
+- OBSERVATION for Phase 6 tuning (not a bug): a single correct answer moves BKT mastery
+  0.50 -> 0.845, which triggers ESCALATE_DIFFICULTY at confidence 0.22. The guard's
+  escalate rule checks mastery but not confidence. Pedagogically that is an
+  overconfident tutor; worth gating escalation on confidence too.
+- OBSERVATION for the demo seed: with conditionals left at the yaml default (0.50/0.30),
+  weakest_prerequisite picks CONDITIONALS over FUNCTIONS (0.15 vs 0.33 on
+  mastery*confidence). The demo seed must raise conditionals so functions is the
+  genuine gap - otherwise the agent is right and the script is wrong.

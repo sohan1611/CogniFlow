@@ -115,12 +115,12 @@ behaviour.
 | 2 | Sandboxed code execution + failure taxonomy | ✅ Verified |
 | 3 | RAG ingestion and retrieval | ✅ Verified |
 | 4 | LLM provider abstraction, structured outputs | ✅ Verified offline |
-| 5 | LangGraph orchestration, interrupt/resume | 🔄 Next |
-| 6 | Full adaptive loop | ⬜ Planned |
+| 5 | LangGraph orchestration, interrupt/resume | ✅ Verified |
+| 6 | Full adaptive loop | 🔄 Next |
 | 7 | Student simulator + ablation study | ⬜ Planned |
 | 8 | Event stream, CLI demo, UI | ⬜ Planned |
 
-**121 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
+**134 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
 isn't installed). Everything marked ✅ is independently test-verified, not self-reported.
 
 Phase 2 highlights, each verified by running it rather than by inspection:
