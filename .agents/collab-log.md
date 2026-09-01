@@ -174,3 +174,31 @@ Newest entries at the bottom. Gists only, never secrets.
 - test_demo_e2e.py asserts on the EVENT STREAM and DURABLE STORE, never on printed
   text, so a hardcoded narration cannot satisfy it. Includes a determinism test:
   two identical runs must produce identical paths.
+
+## 2026-09-02 - Phase 7: simulator + ablation + BKT fitting (Claude direct)
+- Built: eval/simulator.py (latent skills with CAUSAL prerequisite gating and blocked
+  learning), eval/ablation.py (3 arms over an identical cohort), eval/bkt_fit.py
+  (likelihood fitting + held-out AUC and log-likelihood), scripts/run_ablation.py.
+- THREE HARNESS BUGS FOUND AND FIXED, two of which had REVERSED the result:
+  1. UNEQUAL BUDGETS: arm A ran 40 steps while arm B stopped at 4-7, because a policy
+     returning COMPLETE ended the session. A "won" purely on 6-10x more practice.
+     Fixed: every arm now gets exactly max_steps attempts.
+  2. THE PRE-TEST WAS TEACHING: two attempts at a prerequisite with learn_rate 0.22
+     quietly fixed the planted gap for EVERY arm, so nothing could distinguish them.
+     Fixed by adding SimulatedStudent.assess() which measures without learning.
+  3. TEST ASSUMPTION WRONG, NOT CODE: deliberately terrible BKT params beat fitted ones
+     on AUC. Cause: AUC is rank-invariant and blind to calibration. Now report held-out
+     log-likelihood alongside AUC, and the disagreement became a genuine finding.
+- HONEST RESULT (80 students/arm, identical cohorts):
+    A no-prereq  100% mastered, median 14 steps, 0% gap found,  est err 0.211
+    B rules      100% mastered, median 10 steps, 65% gap found, est err 0.106,
+                 false redirect 25%
+  -> 29% fewer attempts, 65% vs 0% gap detection, half the estimate error, at a real
+     25% false-redirect cost which is REPORTED not hidden.
+- Arm C == Arm B because no API key: the guarded arm falls back to rules. Stated openly
+  in the output rather than glossed.
+- BKT FITTING: honest NEGATIVE result. AUC +0.003..+0.006, below the 0.01 adoption
+  threshold, so literature defaults are retained. Log-likelihood DID improve (+0.03),
+  which explains why: fitting improves calibration, the system depends on ranking.
+  This is exactly the commitment made in plan section 16.
+- Verified: 162 passed, 1 skipped. Ablation is deterministic across runs.
