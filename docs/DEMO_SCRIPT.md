@@ -1,0 +1,199 @@
+# CogniFlow — 3–5 minute demo video script
+
+**Two speakers.** A narrates architecture, B drives the machine. Total target: **4:30**.
+
+> **Golden rule:** never say a thing the screen is not showing. Judges have seen a lot of
+> narrated slideware. Everything below is on-screen output from a real run.
+
+---
+
+## Before you record
+
+```bash
+make ingest        # build the retrieval index (one-time)
+make live          # if a key is configured, prove the wire format works FIRST
+make verify        # confirm the demo self-checks pass
+```
+
+Run `make verify` **three times** and confirm the path is identical each time. If it
+varies, stop and fix that before recording — a demo you cannot reproduce is a demo that
+will fail in front of judges.
+
+Terminal at ~110 columns, large font. Close everything else.
+
+---
+
+## 0:00 – 0:25 · The problem (A, on the seeded state)
+
+> "A student fails a recursion exercise. Twice. Every AI tutor does the same thing here:
+> it generates an easier recursion problem.
+>
+> But the student's real problem usually isn't recursion. It's that they don't
+> understand what `return` does when one function calls another. Give them an easier
+> recursion problem and they'll fail that too — for the same invisible reason.
+>
+> CogniFlow is built to notice that and go back a step."
+
+**Screen:** the seeded model. Point at `functions 0.55` and `recursion 0.35`.
+
+---
+
+## 0:25 – 0:45 · What is and isn't scripted (A)
+
+> "One thing before we run it. The *student* is scripted — what they submit, and when.
+> **Nothing the tutor does is scripted.** Every decision you're about to see is computed
+> from a prerequisite graph and live Bayesian estimates of what this student knows.
+>
+> At the end the demo checks its own claims, so you don't have to take my word for it."
+
+**Why this beat exists:** it pre-empts the "is this hardcoded?" question rather than
+waiting for it in Q&A.
+
+---
+
+## 0:45 – 1:30 · Attempt 1 (B runs `make demo`)
+
+**Screen:** the live event stream. Pause on these lines:
+
+```
+[diagnose]  target_skill=recursion  mastery=0.350  missing_prerequisites=['functions']
+[retrieve]  skill=recursion  chunks=4     evidence: 05_recursion.md#5.1 The idea
+[execute]   status=runtime_error  started=True  outcome=STUDENT_RUNTIME_ERROR
+[mastery]   recursion  0.350 -> 0.204
+[adapt]     action=RETRY_VARIATION
+```
+
+> B: "Real diagnosis, real retrieval with citations back to the source page, real code
+> execution in a sandbox. The student's code raised — mastery drops, and the agent
+> retries a variation. So far, a normal tutor."
+
+---
+
+## 1:30 – 2:15 · **THE MOMENT** — attempt 2 (A narrates over the screen)
+
+```
+[mastery]          recursion  0.204 -> 0.176
+[adapt]            action=REVISIT_PREREQUISITE  target_skill=functions
+   reason: repeated failures indicate an unmastered prerequisite
+[prereq_redirect]  from_skill=recursion -> to_skill=functions
+[plan_action]      target_skill=functions  teaching_mode=CODE_TRACE
+[retrieve]         skill=functions  evidence: 03_functions.md#3.4 The call stack
+```
+
+> A: "**There.** Second failure. The agent did *not* generate an easier recursion
+> problem. It walked the prerequisite graph, found `functions` was the weakest unmastered
+> dependency, and **reassigned its own objective**.
+>
+> Look at the teaching mode — it switched to `CODE_TRACE`. It's not repeating the
+> approach that already failed. And retrieval followed it: it's now pulling *The call
+> stack* from the functions chapter."
+
+**Slow down here.** This is the whole project. Give it room.
+
+---
+
+## 2:15 – 2:45 · The infrastructure failure (B)
+
+```
+[execute]   status=sandbox_error  started=False  outcome=SANDBOX_FAILURE
+[recover]   fault=SANDBOX_FAILURE  mastery_untouched=True
+   reason: infrastructure fault; student model deliberately left unchanged
+```
+
+> B: "We inject a sandbox failure mid-session. Watch the mastery number — **it doesn't
+> move.**
+>
+> `StudentOutcome` and `SystemFault` are disjoint types, and mastery is reachable only
+> from the first. If *our* infrastructure breaks, the student doesn't pay for it. That's
+> enforced by the type system, not by a conditional someone has to remember."
+
+---
+
+## 2:45 – 3:15 · The return (A)
+
+```
+[mastery]        functions  0.550 -> 0.869
+[adapt]          action=REVISIT_PREREQUISITE  target_skill=recursion
+   reason: prerequisite mastered, returning to original target
+[prereq_return]  returning_to=recursion
+[mastery]        recursion  0.176 -> 0.567 -> 0.877
+```
+
+> A: "Functions is mastered. The agent pops its return stack and goes back to what the
+> student originally came for. Recursion: **0.35 to 0.88.**"
+
+**Screen:** `Learning path : recursion -> functions -> recursion`
+
+---
+
+## 3:15 – 3:45 · It checks its own claims (B)
+
+```
+[PASS] visited recursion -> functions -> recursion
+[PASS] first failure retried, second escalated to prerequisite
+[PASS] redirect target was chosen as the weakest prerequisite
+[PASS] returned to the original objective
+[PASS] infrastructure fault did not move mastery
+[PASS] student ended ahead on recursion
+```
+
+> B: "The demo verifies itself. And the same code path is asserted in CI against the
+> event stream and the database — not against printed text. A hardcoded narration
+> couldn't pass those tests."
+
+---
+
+## 3:45 – 4:20 · Does it actually help? (A runs `make ablation`)
+
+```
+arm                  mastered   med steps  gap found   false rdr
+A_no_prerequisite      100.0%          14       0.0%        0.0%
+B_rules                100.0%          10      65.0%       25.0%
+```
+
+> A: "Eighty simulated students, prerequisite gaps *planted* so detection is scored
+> exactly. Prerequisite-aware adaptation reaches mastery in **29% fewer attempts** and
+> finds the gap **65%** of the time. The arm without a skill graph finds it **0%** — it
+> can't, by construction.
+>
+> And the honest cost: it also redirects **25%** of students who had no gap. Diagnosis
+> isn't free, and we report that."
+
+---
+
+## 4:20 – 4:30 · Close (A)
+
+> "Three of eleven nodes call a model. Diagnosis, routing, and mastery are deterministic
+> and unit-tested, because arithmetic is already correct and free.
+>
+> The model proposes. The guard disposes. That's CogniFlow."
+
+---
+
+## Optional 20s add-on — the live interrupt
+
+If you have room, `make ui` → **Be the student** → Start session:
+
+> "The graph is suspended at `await_student`, checkpointed to disk. It's not looping —
+> it has genuinely stopped. A *separate process* can resume this thread. Type an
+> answer and it continues from that checkpoint."
+
+Strong for the finale, where a judge can type the answer themselves.
+
+---
+
+## Q&A preparation
+
+| Likely question | Answer |
+|---|---|
+| "Is the redirect hardcoded?" | Show `app/mastery/policy.py`. It's graph traversal over live mastery. Test 18 asserts on state transitions, not text. |
+| "Why not just an LLM?" | It has no calibrated model of the student and will advance someone who isn't ready. The LLM proposes; the guard disposes. |
+| "Why not just rules?" | Rules can't author a novel exercise grounded in a specific misconception and a specific page. |
+| "Why so few LLM calls?" | We don't use an LLM where arithmetic is already correct and free. |
+| "Is mastery just a counter?" | Bayesian Knowledge Tracing, Corbett & Anderson 1995. Models slip and guess; yields a confidence signal the policy consumes. |
+| "Did you train anything?" | We built BKT parameter fitting. It produced a **negative** result on held-out data, so we ship literature defaults and report it. |
+| "Is the sandbox real?" | Separate process, timeout, minimal env — student code can't read our API keys, verified with a canary. `capability()` honestly reports what Windows subprocess *doesn't* isolate. Docker backend adds network and memory isolation. |
+| "What breaks it?" | 25% false-redirect rate. A student with no gap gets an unnecessary detour. It's in the results table. |
+
+**If something fails live:** say so plainly, run `make verify`, and keep going. The event
+stream is the evidence; a recovered failure demonstrates the recovery path you claimed.
