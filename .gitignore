@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+*.db
+*.sqlite
+*.sqlite3
+data/chroma/
+data/cogniflow.db
+.cache/llm_replay/
+.pytest_cache/
+results/
+.agents/codex-*.txt

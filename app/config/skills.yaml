@@ -1,0 +1,65 @@
+variables:
+  skill: variables
+  mastery: 0.5
+  confidence: 0.3
+  attempts: 0
+  prerequisites: []
+  misconceptions: []
+conditionals:
+  skill: conditionals
+  mastery: 0.5
+  confidence: 0.3
+  attempts: 0
+  prerequisites:
+    - variables
+  misconceptions: []
+loops:
+  skill: loops
+  mastery: 0.5
+  confidence: 0.3
+  attempts: 0
+  prerequisites:
+    - variables
+    - conditionals
+  misconceptions: []
+functions:
+  skill: functions
+  mastery: 0.5
+  confidence: 0.3
+  attempts: 0
+  prerequisites:
+    - variables
+  misconceptions: []
+function_call_tracing:
+  skill: function_call_tracing
+  mastery: 0.5
+  confidence: 0.3
+  attempts: 0
+  prerequisites:
+    - functions
+  misconceptions: []
+recursion:
+  skill: recursion
+  mastery: 0.5
+  confidence: 0.3
+  attempts: 0
+  prerequisites:
+    - functions
+    - conditionals
+  misconceptions: []
+recursion_tree:
+  skill: recursion_tree
+  mastery: 0.5
+  confidence: 0.3
+  attempts: 0
+  prerequisites:
+    - recursion
+  misconceptions: []
+nested_loops:
+  skill: nested_loops
+  mastery: 0.5
+  confidence: 0.3
+  attempts: 0
+  prerequisites:
+    - loops
+  misconceptions: []
