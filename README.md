@@ -111,16 +111,28 @@ behaviour.
 | Phase | Component | State |
 |---|---|---|
 | 0 | Environment, dependency gate, smoke tests | ✅ Verified |
-| 1 | Schemas, skill DAG, BKT mastery, policy, guard | ✅ Verified — 61 tests |
-| 2 | Sandboxed code execution + failure taxonomy | 🔄 In progress |
-| 3 | RAG ingestion and retrieval | ⬜ Planned |
+| 1 | Schemas, skill DAG, BKT mastery, policy, guard | ✅ Verified |
+| 2 | Sandboxed code execution + failure taxonomy | ✅ Verified |
+| 3 | RAG ingestion and retrieval | 🔄 In progress |
 | 4 | LLM provider abstraction, structured outputs | ⬜ Planned |
 | 5 | LangGraph orchestration, interrupt/resume | ⬜ Planned |
 | 6 | Full adaptive loop | ⬜ Planned |
 | 7 | Student simulator + ablation study | ⬜ Planned |
 | 8 | Event stream, CLI demo, UI | ⬜ Planned |
 
-**Everything marked ✅ is independently test-verified, not self-reported.**
+**79 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
+isn't installed). Everything marked ✅ is independently test-verified, not self-reported.
+
+Phase 2 highlights, each verified by running it rather than by inspection:
+
+- The classifier was checked **exhaustively over all 12 `status × started` combinations**.
+  A process that never started is *always* an infrastructure fault; a timeout where the
+  process *did* start is the student's own infinite loop and counts as real evidence.
+- **Student code cannot read the parent process's credentials** — verified empirically
+  with a canary key, not assumed from the design.
+- The sandbox reports the isolation it *actually* has. On the Windows subprocess backend
+  that means no network or memory isolation, and `capability()` says so rather than
+  claiming protection it lacks. The optional Docker backend provides both.
 
 ---
 
