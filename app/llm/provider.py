@@ -72,7 +72,33 @@ class StructuredCaller(Protocol):
 # ---------------------------------------------------------------------------
 # Model ids are env-overridable because provider catalogues drift.
 # ---------------------------------------------------------------------------
-ANTHROPIC_MODEL = os.environ.get("COGNIFLOW_ANTHROPIC_MODEL", "claude-opus-5")
+ANTHROPIC_MODEL = os.environ.get("COGNIFLOW_ANTHROPIC_MODEL", "claude-sonnet-5")
+"""Default Anthropic model. Sonnet rather than Opus by deliberate default.
+
+Anthropic credit is finite and metered. Problem generation and misconception analysis
+are well within Sonnet's range, and the ADAPT role's output is constrained by the
+deterministic guard regardless of which model proposes it -- so paying Opus rates for a
+decision the guard may overrule is poor value. Override per role below, or globally
+with COGNIFLOW_ANTHROPIC_MODEL.
+"""
+
+ROLE_MODELS: dict[str, str] = {
+    role: os.environ[key]
+    for role, key in (
+        ("generate", "COGNIFLOW_MODEL_GENERATE"),
+        ("grade", "COGNIFLOW_MODEL_GRADE"),
+        ("analyze", "COGNIFLOW_MODEL_ANALYZE"),
+        ("adapt", "COGNIFLOW_MODEL_ADAPT"),
+    )
+    if key in os.environ
+}
+"""Per-role Anthropic model overrides.
+
+Spend is not uniform across roles. Generation is the one a judge actually reads;
+adaptation is guarded and cheap to get slightly wrong. Setting
+COGNIFLOW_MODEL_ADAPT=claude-haiku-4-5 while leaving generation on Sonnet is a
+sensible way to stretch a fixed credit.
+"""
 GROQ_MODEL = os.environ.get("COGNIFLOW_GROQ_MODEL", "llama-3.3-70b-versatile")
 GEMINI_MODEL = os.environ.get("COGNIFLOW_GEMINI_MODEL", "gemini-2.0-flash")
 
@@ -99,7 +125,7 @@ def _spec(provider: str, role: Role) -> ProviderSpec:
     if provider == "anthropic":
         return ProviderSpec(
             provider="anthropic",
-            model=ANTHROPIC_MODEL,
+            model=ROLE_MODELS.get(str(role), ANTHROPIC_MODEL),
             max_tokens=8000,
             thinking=thinking,
             api_key_env="ANTHROPIC_API_KEY",

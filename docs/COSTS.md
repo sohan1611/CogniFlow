@@ -81,7 +81,49 @@ this cannot regress silently:
 assert chain[0].provider != "anthropic", "the paid provider must not lead"
 ```
 
-### If you do want to use the Anthropic API anyway
+### Spending the ₹500 Anthropic credit well
+
+The team holds **₹500 (~$5.90)** of Anthropic API credit. That is real but finite, and
+worth spending deliberately rather than burning on development iteration.
+
+What it buys, at ~15 structured calls per demo run:
+
+| Model | Per run | Runs on ₹500 |
+|---|---|---|
+| `claude-opus-5` | $0.337 | **~17** |
+| `claude-sonnet-5` | $0.135 | **~44** |
+| `claude-haiku-4-5` | $0.068 | **~87** |
+
+**Recommended allocation:**
+
+| Activity | Provider | Why |
+|---|---|---|
+| Development, debugging, test runs | **Groq / Gemini free tier** | Costs nothing, and the disk replay cache makes repeat runs free anyway |
+| Ablation cohort runs | **none** — policy-only | No model calls at all |
+| `make live` verification | free tier first, then one Anthropic call | Confirms both wire formats for ~₹1 |
+| **Video recording** | **Anthropic** | 2–3 takes, ~₹90. This is what judges see. |
+| **Finale live demo** | **Anthropic** | Reserve ~₹200. Quality matters most with a jury watching. |
+
+That leaves roughly ₹200 of headroom, which is the right shape for a fixed credit: spend
+it where it is visible, not where it is merely convenient.
+
+**Default is Sonnet, not Opus.** Problem generation and misconception analysis sit well
+within Sonnet's range, and the ADAPT role's output is validated by the deterministic
+guard regardless of which model proposed it — so paying Opus rates for a decision the
+guard may overrule is poor value. Roughly 2.5× more runs for no meaningful loss.
+
+Stretch it further per role:
+
+```bash
+COGNIFLOW_MODEL_GENERATE=claude-sonnet-5    # the text a judge actually reads
+COGNIFLOW_MODEL_ADAPT=claude-haiku-4-5      # guarded anyway; cheap is fine
+COGNIFLOW_PROVIDER_ORDER=anthropic,groq,google
+```
+
+Or leave the order free-first and promote Anthropic only for the recording session. The
+architecture is provider-agnostic, so this is configuration, not a code change.
+
+### The general case, if you had no credit
 
 It is stronger at structured output. Rough estimate at Claude Opus 5 rates
 ($5 / $10⁶ input, $25 / $10⁶ output), ~2K in and ~500 out per call:
