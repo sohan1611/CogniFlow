@@ -67,6 +67,11 @@ def main() -> int:
     ap.add_argument("--quiet", action="store_true", help="summary only")
     ap.add_argument("--db", default=":memory:", help="student store path")
     ap.add_argument("--trace", type=Path, help="write the event stream as JSONL")
+    ap.add_argument(
+        "--live",
+        action="store_true",
+        help="use the configured LLM providers instead of deterministic templates",
+    )
     args = ap.parse_args()
 
     logging.disable(logging.WARNING)
@@ -86,6 +91,15 @@ def main() -> int:
     seed_student(store, "demo-student")
 
     events = EventLog(path=args.trace, echo=False)
+    if args.live:
+        from app.llm.provider import Role, available_chain
+
+        chain = available_chain(Role.GENERATE)
+        rule("LIVE MODE")
+        print("  providers: " + (", ".join(f"{s.provider}:{s.model}" for s in chain) or "NONE"))
+        if not chain:
+            print("  No credentials found. Add a free GROQ_API_KEY to .env, or drop --live.")
+            return 1
     rule("LIVE EVENT STREAM")
     result = run_demo(
         store=store,
@@ -95,6 +109,7 @@ def main() -> int:
         inject_fault_on_turn=3,
         student_id="demo-student",
         thread_id="demo-thread",
+        live=args.live,
     )
 
     if not args.quiet:

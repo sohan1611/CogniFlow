@@ -161,8 +161,11 @@ C_guarded_model        100.0%          10      65.0%       25.0%     0.106
 - **Honest cost: it also redirected 25% of students who had no gap.** Diagnosis is not
   free, and the harness is built to surface that rather than hide it.
 
-Arm C matches Arm B exactly because no LLM provider is configured here, so the guarded
-arm falls back to the deterministic policy. Stated rather than glossed over.
+Arm C matches Arm B in the offline table because the guarded arm falls back to the
+deterministic policy with no provider configured. **With a live provider the guard
+override rate becomes a real measurement: 20%**, and the override it caught was a model
+proposing `ADVANCE` while it still owed a return to the original skill — exactly the
+failure the guard exists to prevent.
 
 Reproduce it yourself — it costs nothing and takes seconds:
 
@@ -227,7 +230,7 @@ behaviour.
 | 8 | Event stream, CLI demo, UI | ✅ Verified |
 | 9 | Submission documents, clean-clone gate | ✅ Verified |
 
-**163 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
+**165 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
 isn't installed). Everything marked ✅ is independently test-verified, not self-reported.
 
 Phase 2 highlights, each verified by running it rather than by inspection:

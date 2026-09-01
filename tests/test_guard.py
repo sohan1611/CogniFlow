@@ -161,3 +161,77 @@ def assert_satisfies_invariants(final: AdaptationDecision, context: PolicyContex
         and context.consecutive_failures >= 2
     ):
         assert context.graph.weakest_prerequisite(context.target_skill, MASTERY_THRESHOLD) is None
+
+
+def test_advance_is_blocked_while_a_prerequisite_return_is_owed() -> None:
+    """Regression: a live model proposed ADVANCE mid-detour and abandoned the target.
+
+    The deterministic policy never does this because of branch ordering, so the gap was
+    invisible until a real provider proposed freely. That is the whole point of having
+    a guard rather than trusting the model.
+    """
+    from app.mastery.guard import validate
+    from app.mastery.policy import PolicyContext
+    from app.mastery.skill_graph import SkillGraph
+    from app.models.enums import AdaptationAction, Difficulty, StudentOutcome
+    from app.models.schemas import AdaptationDecision, SkillNode
+
+    nodes = {
+        "variables": SkillNode(skill="variables", mastery=0.9, confidence=0.9),
+        "functions": SkillNode(
+            skill="functions", mastery=0.8, confidence=0.8, attempts=5,
+            prerequisites=["variables"],
+        ),
+        "recursion": SkillNode(
+            skill="recursion", mastery=0.3, confidence=0.6,
+            prerequisites=["functions"],
+        ),
+    }
+    ctx = PolicyContext(
+        target_skill="functions",
+        graph=SkillGraph(nodes),
+        last_outcome=StudentOutcome.CORRECT,
+        consecutive_failures=0,
+        topic_attempts=2,
+        loop_count=4,
+        prereq_depth=1,
+        prereq_return_stack=["recursion"],
+        current_difficulty=Difficulty.MEDIUM,
+    )
+
+    for action in (AdaptationAction.ADVANCE, AdaptationAction.ESCALATE_DIFFICULTY):
+        verdict = validate(AdaptationDecision(action=action, target_skill="functions"), ctx)
+        assert verdict.overridden, f"{action} should be blocked mid-detour"
+        assert "must_return_to_original_objective" in verdict.violated_rules
+        assert verdict.final.action is AdaptationAction.REVISIT_PREREQUISITE
+        assert verdict.final.target_skill == "recursion"
+
+
+def test_advance_is_allowed_once_nothing_is_owed() -> None:
+    """The rule must not fire when there is no outstanding detour."""
+    from app.mastery.guard import validate
+    from app.mastery.policy import PolicyContext
+    from app.mastery.skill_graph import SkillGraph
+    from app.models.enums import AdaptationAction, Difficulty, StudentOutcome
+    from app.models.schemas import AdaptationDecision, SkillNode
+
+    nodes = {
+        "variables": SkillNode(skill="variables", mastery=0.9, confidence=0.9),
+        "functions": SkillNode(
+            skill="functions", mastery=0.8, confidence=0.8, attempts=5,
+            prerequisites=["variables"],
+        ),
+    }
+    ctx = PolicyContext(
+        target_skill="functions",
+        graph=SkillGraph(nodes),
+        last_outcome=StudentOutcome.CORRECT,
+        consecutive_failures=0,
+        topic_attempts=2,
+        loop_count=4,
+        prereq_depth=0,
+        prereq_return_stack=[],
+        current_difficulty=Difficulty.MEDIUM,
+    )
+    verdict = validate(AdaptationDecision(action=AdaptationAction.ADVANCE, target_skill="functions"), ctx)
+    assert verdict.overridden is False

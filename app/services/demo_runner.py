@@ -152,11 +152,17 @@ def run_demo(
     inject_fault_on_turn: int | None = None,
     max_turns: int = 12,
     checkpointer: object | None = None,
+    live: bool = False,
 ) -> DemoResult:
     """Run the adaptive loop to completion, feeding scripted submissions.
 
     `inject_fault_on_turn` queues a SANDBOX_FAILURE before that turn (1-indexed), which
     is how the demo proves an infrastructure failure leaves mastery untouched.
+
+    `live=True` uses the configured providers instead of the offline stub, so problems
+    are model-authored rather than templated. The adaptation PATH is unchanged either
+    way -- routing is deterministic and the guard validates whatever the model proposes
+    -- which is exactly why the demo is safe to run live in front of a jury.
     """
     nodes = seed_student(store, student_id)
     before = {k: v.mastery for k, v in nodes.items()}
@@ -164,7 +170,7 @@ def run_demo(
     injector = FaultInjector()
     sandbox = FaultInjectingSandbox(SubprocessSandbox(), injector)
 
-    deps = GraphDeps.offline(store, events)
+    deps = GraphDeps(store=store, events=events) if live else GraphDeps.offline(store, events)
     deps.sandbox = sandbox
     if retriever is not None:
         deps.retriever = retriever  # type: ignore[assignment]

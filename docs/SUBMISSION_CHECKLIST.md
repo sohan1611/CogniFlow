@@ -31,7 +31,7 @@
 ## Release gates — must all pass before submitting
 
 ```bash
-make test        # 163 passed, 1 skipped
+make test        # 165 passed, 1 skipped
 make verify      # 7/7 self-checks, path recursion -> functions -> recursion
 make ablation    # three-arm table reproduces
 make scan        # exit 0
@@ -55,19 +55,38 @@ before submitting** — a judge who cannot run it scores only what they can see.
 
 ## Outstanding before submission
 
-### 1. ⚠️ Live API verification — the one real gap
+### 1. ✅ Live API verification — DONE
 
-Everything to date was produced **offline**, against deterministic fallbacks and a stub
-model. The graph, routing, mastery, RAG, sandbox, and recovery are all genuinely
-exercised — but **no request has ever gone to a real provider**, so the wire format
-(structured output, adaptive thinking, the deliberate omission of `temperature`) is
-unverified.
+**Verified against Groq (`openai/gpt-oss-120b`, free tier) on 2 Sep 2026.**
+`make live` passes, and `demo.py --live --verify` passes **all 7 self-checks** with
+model-authored problems.
+
+Going live found three real defects that offline testing could not:
+
+1. **`.env` was never loaded.** Nothing called `load_dotenv()`, so a key sitting in
+   `.env` was invisible and every provider reported "no credentials" — indistinguishable
+   from a missing key.
+2. **The test-case runner crashed on model output.** It assumed a `name` field the
+   template always emits and a real model does not. Model output is untrusted input; a
+   generation quirk must never end a session.
+3. **A missing guard invariant.** The model proposed `ADVANCE` while a prerequisite
+   return was still owed, silently abandoning the skill the student came for. The
+   deterministic policy never does this because of branch ordering, so the gap was
+   invisible until a real provider proposed freely. Now blocked by
+   `must_return_to_original_objective`, with regression tests.
+
+The third is the strongest possible argument for the architecture: **the guard caught
+the model doing something the rules never would.**
 
 ```bash
-# Get a FREE key from console.groq.com (or aistudio.google.com), put it in .env:
-#   GROQ_API_KEY=...
-make live
+# Free key from console.groq.com, then:
+.venv/Scripts/python.exe scripts/live_check.py
+.venv/Scripts/python.exe demo.py --live --verify
 ```
+
+> **Model ids drift.** `llama-3.3-70b-versatile` was not available on this account;
+> `openai/gpt-oss-120b` is. List what your key can reach before assuming:
+> `client.models.list()` via the `groq` SDK. Override with `COGNIFLOW_GROQ_MODEL`.
 
 **Use a free tier.** Groq and Google both offer genuinely free API tiers that are ample
 for this project, and the chain leads with them by default. An Anthropic API key is
@@ -120,7 +139,7 @@ unscripted demo, and teams bring their own hardware and credentials.
 - [ ] **Mobile hotspot / data pack** — venue Wi-Fi failing mid-demo is the classic way a
       working project dies on stage. Budgeted in [COSTS.md](COSTS.md).
 - [ ] Pre-warm the Chroma model cache on the demo laptop
-- [ ] `.env` populated with a working key, `make live` green
+- [x] `.env` populated with a working key, `make live` green (Groq free tier)
 - [ ] Rehearse the Q&A table at the end of DEMO_SCRIPT.md
 - [ ] Owner A leads on mastery and safety questions; Owner B on the graph and failure
       handling ([OWNERS_DRAFT.md](OWNERS_DRAFT.md))

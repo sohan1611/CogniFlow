@@ -2,6 +2,11 @@
 
 Invariant: a SystemFault aborts the suite immediately so partial infrastructure
 failure cannot be converted into student evidence.
+
+Test cases arrive from a LANGUAGE MODEL and are therefore untrusted input. A model may
+omit a field, name it differently, or emit a non-dict entry entirely. None of that may
+crash the graph -- a malformed case is skipped or defaulted, never raised, because a
+generation quirk must not end a student's session.
 """
 
 from __future__ import annotations
@@ -25,10 +30,21 @@ def run_test_cases(
     results: list[TestCaseResult] = []
     first_failure: TestCaseResult | None = None
 
-    for raw_case in test_cases:
-        name = str(raw_case["name"])
-        stdin = str(raw_case.get("stdin", ""))
-        expected = str(raw_case["expected_output"]).strip()
+    for index, raw_case in enumerate(test_cases, 1):
+        if not isinstance(raw_case, dict):
+            continue
+        name = str(raw_case.get("name") or f"case_{index}")
+        stdin = str(raw_case.get("stdin") or raw_case.get("input") or "")
+        expected_raw = (
+            raw_case.get("expected_output")
+            if raw_case.get("expected_output") is not None
+            else raw_case.get("expected", raw_case.get("output"))
+        )
+        if expected_raw is None:
+            # A case with nothing to compare against is not a test. Skipping is
+            # correct: inventing an expectation would fabricate student evidence.
+            continue
+        expected = str(expected_raw).strip()
         execution = sandbox.run(student_code, stdin=stdin, timeout_s=timeout_s)
         actual = execution.stdout.strip()
         passed = execution.status == ExecutionStatus.OK and actual == expected

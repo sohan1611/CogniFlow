@@ -50,6 +50,18 @@ def _violated_rules(decision: AdaptationDecision, ctx: PolicyContext) -> list[st
     ):
         violations.append("advance_requires_mastery")
 
+    # A pending return stack is an unmet obligation: the agent detoured away from a
+    # skill the student came for, and must go back before moving on. The deterministic
+    # policy respects this by branch ordering, but a MODEL proposing freely does not --
+    # a live provider proposed ADVANCE here and silently abandoned the original
+    # objective, which is precisely the failure this guard exists to prevent.
+    if (
+        decision.action
+        in (AdaptationAction.ADVANCE, AdaptationAction.ESCALATE_DIFFICULTY)
+        and ctx.prereq_return_stack
+    ):
+        violations.append("must_return_to_original_objective")
+
     if decision.action == AdaptationAction.ESCALATE_DIFFICULTY and (
         mastery < ESCALATE_THRESHOLD or confidence < CONFIDENCE_THRESHOLD
     ):

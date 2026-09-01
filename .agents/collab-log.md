@@ -262,3 +262,29 @@ Newest entries at the bottom. Gists only, never secrets.
   * .env.example, README, BRIEF, SUBMISSION_CHECKLIST and live_check.py all now point
     at the free tiers first.
 - Verified: 163 passed, 1 skipped. ₹0 now holds without qualification.
+
+## 2026-09-02 - LIVE API VERIFICATION (Groq free tier) - three real bugs found
+- User added a GROQ key. Several things surfaced, in order:
+  0. The key was pasted into .env.example, which is TRACKED BY GIT. Caught before any
+     commit (verified with `git log -S`), moved to .env, template restored. Never pushed.
+  1. NOTHING CALLED load_dotenv(). A key in .env was invisible to
+     ProviderSpec.available(), so every provider reported "no credentials" -
+     indistinguishable from a missing key. Fixed in provider.py before the env reads.
+  2. MODEL NAME WRONG. `llama-3.3-70b-versatile` 404s on this account. Listed the real
+     catalogue via the groq SDK -> `openai/gpt-oss-120b`. Note: a urllib probe returned
+     Cloudflare 1010 and misled the diagnosis; the SDK gets through. Measure with the
+     client that actually works.
+  3. RUNNER CRASHED ON MODEL OUTPUT. run_test_cases did raw_case["name"], which the
+     template always supplies and a real model does not -> KeyError took down the graph.
+     Model output is untrusted input; now defaults/skips malformed cases.
+  4. MISSING GUARD INVARIANT (the important one). The model proposed ADVANCE while a
+     prerequisite return was still owed, abandoning the skill the student came for. The
+     deterministic policy never does this because of branch ordering, so the gap was
+     INVISIBLE until a live provider proposed freely. Added
+     `must_return_to_original_objective` + 2 regression tests.
+- RESULT: `demo.py --live --verify` passes ALL 7 self-checks with model-authored
+  problems. Guard override rate is now a REAL measurement: 20%, and the override it
+  caught was exactly bug 4. That is the strongest argument for the architecture - the
+  guard caught the model doing something the rules never would.
+- Added --live to demo_runner and demo.py; offline remains the default.
+- 165 passed, 1 skipped.

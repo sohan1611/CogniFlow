@@ -16,7 +16,14 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
+from dotenv import load_dotenv
 from pydantic import BaseModel
+
+# Load .env into the process environment BEFORE the module-level os.environ reads
+# below. Without this, a key sitting in .env is invisible to ProviderSpec.available()
+# and every provider silently reports "no credentials" -- which looks exactly like a
+# missing key and wastes a long time to diagnose.
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +106,7 @@ adaptation is guarded and cheap to get slightly wrong. Setting
 COGNIFLOW_MODEL_ADAPT=claude-haiku-4-5 while leaving generation on Sonnet is a
 sensible way to stretch a fixed credit.
 """
-GROQ_MODEL = os.environ.get("COGNIFLOW_GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL = os.environ.get("COGNIFLOW_GROQ_MODEL", "openai/gpt-oss-120b")
 GEMINI_MODEL = os.environ.get("COGNIFLOW_GEMINI_MODEL", "gemini-2.0-flash")
 
 
