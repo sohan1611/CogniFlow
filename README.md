@@ -113,14 +113,14 @@ behaviour.
 | 0 | Environment, dependency gate, smoke tests | ✅ Verified |
 | 1 | Schemas, skill DAG, BKT mastery, policy, guard | ✅ Verified |
 | 2 | Sandboxed code execution + failure taxonomy | ✅ Verified |
-| 3 | RAG ingestion and retrieval | 🔄 In progress |
-| 4 | LLM provider abstraction, structured outputs | ⬜ Planned |
+| 3 | RAG ingestion and retrieval | ✅ Verified |
+| 4 | LLM provider abstraction, structured outputs | 🔄 Next |
 | 5 | LangGraph orchestration, interrupt/resume | ⬜ Planned |
 | 6 | Full adaptive loop | ⬜ Planned |
 | 7 | Student simulator + ablation study | ⬜ Planned |
 | 8 | Event stream, CLI demo, UI | ⬜ Planned |
 
-**79 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
+**92 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
 isn't installed). Everything marked ✅ is independently test-verified, not self-reported.
 
 Phase 2 highlights, each verified by running it rather than by inspection:

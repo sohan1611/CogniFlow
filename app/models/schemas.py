@@ -77,3 +77,47 @@ class SkillUpdate(BaseModel):
     confidence_after: float
     outcome: StudentOutcome
     attempts_after: int
+
+from app.models.enums import (
+    Difficulty, TeachingMode, AssessmentType, AdaptationAction,
+    SessionStatus, StudentOutcome, SystemFault, CORRECTNESS, is_student_evidence,
+)
+from pydantic import BaseModel, Field
+
+
+class RetrievedChunk(BaseModel):
+    chunk_id: str
+    text: str
+    skill: str
+    topic: str = ""
+    unit: str = ""
+    subject: str = ""
+    difficulty: str = ""
+    source_file: str
+    section: str = ""
+    score: float = Field(ge=0.0)
+
+
+class RetrievedEvidence(BaseModel):
+    """Grounded retrieval result with citations for downstream agents."""
+
+    query: str
+    skill_filter: str | None
+    chunks: list[RetrievedChunk] = Field(default_factory=list)
+    used_fallback: bool = False
+    degraded: bool = False
+    fault: SystemFault | None = None
+
+    @property
+    def is_empty(self) -> bool:
+        return len(self.chunks) == 0
+
+    def citations(self) -> list[str]:
+        seen: set[str] = set()
+        citations: list[str] = []
+        for chunk in self.chunks:
+            citation = f"{chunk.source_file}#{chunk.section}"
+            if citation not in seen:
+                seen.add(citation)
+                citations.append(citation)
+        return citations

@@ -67,3 +67,27 @@ Newest entries at the bottom. Gists only, never secrets.
     0.2036 -> 0.1763, injected SANDBOX_FAILURE blocked by the type system with mastery
     unchanged at 0.1763
 - Verdict: ACCEPTED after the import fix.
+
+## 2026-09-02 - Work order 3: Phase 3 RAG (Claude -> Codex -> reviewed)
+- Task: document parsing, heading-aware chunking, Chroma store, ingest, retriever,
+  ingest CLI, plus test 12. Spec INLINED all existing signatures (the Phase 2 lesson).
+- Codex: delivered 5 rag modules + 2 schemas + CLI + tests. No import mismatch this
+  time - inlining the API worked.
+- Review found ONE real defect: scripts/ingest_corpus.py failed with
+  ModuleNotFoundError: No module named 'app' when run as documented in the README.
+  pytest worked (rootdir insertion) but a bare script run did not. A judge following
+  the README would have hit this. Claude fixed it with a sys.path bootstrap in the
+  script plus a root conftest.py so pytest resolution is explicit rather than
+  incidental.
+- Verified independently:
+  * pytest: 92 passed, 1 skipped
+  * chromadb confined to app/rag/store.py; no sentence_transformers anywhere
+  * tests use tmp_path and did NOT pollute data/chroma
+  * real corpus ingest: 2 docs -> 16 chunks (functions 8, recursion 8)
+  * DEMO PATH: query "how does the call stack work..." with skill=functions returns
+    "3.4 The call stack" as top hit - the exact material the redirect needs
+  * skill filter isolates in BOTH directions ("base case" under recursion vs functions)
+  * fallback on unknown skill sets used_fallback=True and still returns results
+  * degraded path: a store that raises yields degraded=True + RETRIEVAL_FAILURE and
+    does NOT propagate the exception
+- Verdict: ACCEPTED after the path-bootstrap fix.
