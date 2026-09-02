@@ -135,9 +135,14 @@ detour; see [ABLATION.md](ABLATION.md) for the trade-off and the approach that f
 - **Sandbox isolation is honestly reported.** On the Windows subprocess backend there is
   no network or memory isolation, and `capability()` says so rather than claiming
   otherwise. The optional Docker backend provides both.
-- **No live-API verification yet.** Every result here was produced offline against
-  deterministic fallbacks and a stub model. `scripts/live_check.py` closes that gap in
-  one command using a free Groq or Gemini key — no paid API is required.
+- **The evaluation numbers come from offline runs.** The ablation is deterministic and
+  model-free by design, which is what makes it reproducible at zero cost. Live behaviour
+  has been verified separately against a real provider (Groq free tier): `make live`
+  passes and `demo.py --live --verify` clears all seven self-checks with model-authored
+  problems.
+- **The false-redirect rate is 7.5%, not zero.** Roughly one student in thirteen with
+  sound prerequisites still gets a detour they did not need. Reported in the results
+  table rather than hidden; see [ABLATION.md](ABLATION.md).
 
 ## 7. Responsible use
 
