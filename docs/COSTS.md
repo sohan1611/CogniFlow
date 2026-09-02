@@ -27,7 +27,7 @@ implies: **no GPU training, no paid data feeds, no paid third-party APIs.**
 | 8 | Checkpoints | `SqliteSaver` | Local file | ₹0 |
 | 9 | UI | Streamlit 1.63.0 | Apache-2.0 | ₹0 |
 | 10 | Source hosting | GitHub public repo | Free | ₹0 |
-| 11 | Demo hosting | Hugging Face Spaces free tier | Free (CPU) | ₹0 |
+| 11 | Demo hosting | **Streamlit Community Cloud** free tier | Free; HF retired the Streamlit SDK and its free Gradio tier now gates on account age | ₹0 |
 | 12 | Curriculum corpus | Original text written for this project | Authored in-house, CC BY-SA | ₹0 |
 | | **Build subtotal** | | | **₹0** |
 

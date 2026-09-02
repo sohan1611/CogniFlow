@@ -5,6 +5,15 @@
 Built for the Agentic AI Hackathon — Tech Zephyr 4.0, IIT Bhubaneswar.
 Team **BloodCoded**.
 
+**▶ Try it live: [cogni-flow.streamlit.app](https://cogni-flow.streamlit.app/)** — no
+install. *Watch the demo* replays the prerequisite redirect; *Be the student* runs a real
+session where the graph checkpoints and halts while you think.
+
+> The hosted app executes Python that visitors submit, so submissions pass a static
+> allowlist **before any process is created**. A refusal is reported as
+> `EXECUTION_REFUSED` — a `SystemFault` — and never moves a student's mastery. See
+> [deploy/DEPLOY.md](deploy/DEPLOY.md#before-you-deploy-the-security-position).
+
 ---
 
 ## The problem

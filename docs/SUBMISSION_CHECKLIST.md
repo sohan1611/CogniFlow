@@ -12,7 +12,7 @@
 | 2 | System architecture / workflow | [ARCHITECTURE.md](ARCHITECTURE.md) — Mermaid diagrams, renders in GitHub | ✅ |
 | 3 | Source code / public repo | [github.com/sohan1611/CogniFlow](https://github.com/sohan1611/CogniFlow) | ✅ |
 | 4 | 3–5 minute demo video | [DEMO_SCRIPT.md](DEMO_SCRIPT.md) — script ready | ⬜ **record** |
-| 5 | Runnable / deployed version | `python run.py demo`, `python run.py ui`, `python run.py verify` | ✅ |
+| 5 | Runnable / deployed version | **Live: [cogni-flow.streamlit.app](https://cogni-flow.streamlit.app/)** (public, no install) · locally `python run.py demo`, `run.py ui`, `run.py verify` | ✅ |
 
 ## Repo hygiene
 

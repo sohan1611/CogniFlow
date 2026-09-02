@@ -68,7 +68,7 @@ class CogniEvent:
         head = f"[{self.node}] {self.event_type.value}"
         bits: list[str] = []
         for key, value in self.payload.items():
-            if value is None or value == [] or value == {}:
+            if value is None or value == [] or value == {} or value == "":
                 continue
             if isinstance(value, float):
                 value = f"{value:.3f}"
