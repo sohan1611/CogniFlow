@@ -108,10 +108,17 @@ sensible way to stretch a fixed credit.
 """
 GROQ_MODEL = os.environ.get("COGNIFLOW_GROQ_MODEL", "openai/gpt-oss-120b")
 # gemini-2.0-flash was retired by Google and now returns 404, so the previous default
-# would have failed over silently on any fresh clone. Verified by calling this one
+# would have failed over silently on any fresh clone. Verified by calling candidates
 # through with_structured_output, which is the path that actually has to work --
 # gemini-2.5-flash is listed by the models endpoint but 404s the same way.
-GEMINI_MODEL = os.environ.get("COGNIFLOW_GEMINI_MODEL", "gemini-3.8-flash")
+#
+# flash-lite rather than flash, measured on the same structured call: 1.8s against
+# 35s, and the larger model was rate-limited at that. This provider exists to absorb
+# overflow when Groq throttles mid-session, so latency IS its job; a slower model
+# here does not produce a better demo, it produces a stalled one. Generation quality
+# is the lesser risk because Groq leads and every adaptation the model proposes is
+# validated by the deterministic guard regardless of which provider answered.
+GEMINI_MODEL = os.environ.get("COGNIFLOW_GEMINI_MODEL", "gemini-3.5-flash-lite")
 
 
 PROVIDER_ORDER = [
