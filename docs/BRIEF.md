@@ -91,7 +91,7 @@ Full detail in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 | | |
 |---|---|
-| **213 tests**, all offline | no API key, no network, no spend |
+| **253 tests**, all offline | no API key, no network, no spend |
 | Interrupt/resume | verified **across two OS processes** |
 | Safety invariant | infra failure cannot move mastery — enforced by types, tested adversarially |
 | Sandbox | student code cannot read the parent's API keys (verified with a canary) |
@@ -132,9 +132,11 @@ detour; see [ABLATION.md](ABLATION.md) for the trade-off and the approach that f
   scoring possible — and also what stops it from being evidence about real students.
 - **Narrow curriculum.** Python fundamentals: eight skills, eight hand-authored
   chapters, ~69 retrievable chunks. Real material for every skill, but one subject.
-- **Sandbox isolation is honestly reported.** On the Windows subprocess backend there is
-  no network or memory isolation, and `capability()` says so rather than claiming
-  otherwise. The optional Docker backend provides both.
+- **Sandbox isolation is layered and honestly reported.** Student code passes a static
+  allowlist *before any process is created* — filesystem, network, process spawning and
+  introspection escapes are refused, and a refusal never affects mastery. Beyond that
+  gate the Windows subprocess backend has no network or memory isolation, and
+  `capability()` says so rather than claiming otherwise; the Docker backend adds both.
 - **The evaluation numbers come from offline runs.** The ablation is deterministic and
   model-free by design, which is what makes it reproducible at zero cost. Live behaviour
   has been verified separately against a real provider (Groq free tier): `make live`

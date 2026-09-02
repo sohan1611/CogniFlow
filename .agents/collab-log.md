@@ -396,3 +396,33 @@ Newest entries at the bottom. Gists only, never secrets.
   A single green run would have gone straight into the recorded video and the failure
   would have surfaced in front of a jury instead.
 - 213 passed, 1 skipped. Two regression tests pin the shadowing bug.
+
+## 2026-09-02 - Deployment readiness: static code restrictions + HF Space scaffolding
+- The user asked about deploying. Probed the sandbox FIRST rather than assuming, and
+  found student code could read the filesystem, make OUTBOUND NETWORK REQUESTS, and
+  spawn processes. Fine locally where you run your own code; a publicly hosted
+  CogniFlow would have been an open proxy with a text box.
+- Built app/tools/sandbox/restrictions.py: an AST allowlist applied BEFORE execution, so
+  it cannot be defeated by anything the code does at runtime. Allowlist not blocklist,
+  because blocklists lose - socket via urllib, urllib via __import__, and so on.
+- Modelled the refusal honestly: new ExecutionStatus.BLOCKED and
+  SystemFault.EXECUTION_REFUSED. Deliberately on the SystemFault side - a student who
+  writes a correct function and also imports os has demonstrated NO misconception, and
+  their mastery must not move for a rule nobody told them about.
+- FOUND MY OWN OVER-RESTRICTION: I had blocked input(), which student exercises
+  legitimately use to read stdin (supplied by our own harness). Removed - it prevented
+  nothing and broke real exercises.
+- Four existing tests failed and all four were CORRECT to fail:
+  * two classifier tests asserted the specific fault where they meant "a SystemFault"
+  * the exhaustive status test needed a branch for the new status (correct fix for an
+    exhaustive test is to add the case)
+  * the env-isolation test used `import os`, now blocked; switched to restrict=False
+    because it tests the SECOND layer, and a test that passes only because the first
+    layer held proves nothing about the second
+- 35 adversarial tests: every escape route refused (subclass ladder, globals walk,
+  getattr bypass, dynamic import, relative import), every legitimate exercise allowed.
+- Space scaffolding in deploy/, `make space`, and deploy/DEPLOY.md. VERIFIED by building
+  a clean staging copy, booting it, and driving it in a browser: it bootstrapped the
+  index from scratch and produced recursion -> functions -> recursion with no errors.
+- Cannot deploy myself - it needs the user's Hugging Face account. Exact steps documented.
+- 253 passed, 1 skipped.

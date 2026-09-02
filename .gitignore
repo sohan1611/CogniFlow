@@ -11,3 +11,4 @@ data/cogniflow.db
 .pytest_cache/
 results/
 .agents/codex-*.txt
+build/

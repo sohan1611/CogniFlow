@@ -28,10 +28,24 @@ class SubprocessSandbox:
         memory_limit_mb: int = 256,
         cpu_limit_seconds: int = 5,
         process_limit: int = 64,
+        restrict: bool | None = None,
     ) -> None:
+        """`restrict` refuses filesystem, network, process and introspection access
+        BEFORE running the code.
+
+        ON by default. A Python-fundamentals exercise never needs any of those, and
+        defaulting to permissive would mean a publicly deployed CogniFlow is an open
+        proxy with a text box. Set COGNIFLOW_RESTRICT_CODE=0 for local development
+        against code you already trust.
+        """
         self._memory_limit_mb = memory_limit_mb
         self._cpu_limit_seconds = cpu_limit_seconds
         self._process_limit = process_limit
+        if restrict is None:
+            restrict = os.environ.get("COGNIFLOW_RESTRICT_CODE", "1").strip() not in {
+                "0", "false", "False", "no",
+            }
+        self.restrict = restrict
 
     def capability(self) -> SandboxCapability:
         """Report subprocess isolation capabilities for the current platform."""
@@ -69,6 +83,20 @@ class SubprocessSandbox:
         timeout_s: float = DEFAULT_TIMEOUT_S,
     ) -> ExecutionResult:
         """Execute code in a per-run temp directory using the current interpreter."""
+        if self.restrict:
+            from app.tools.sandbox.restrictions import check
+
+            restriction = check(code)
+            if restriction is not None:
+                # Refused BEFORE execution, so nothing the code might do at runtime can
+                # matter. started=False because no process was ever created.
+                return ExecutionResult(
+                    status=ExecutionStatus.BLOCKED,
+                    started=False,
+                    stderr=restriction.message(),
+                    error_message=f"{restriction.rule}: {restriction.detail}",
+                )
+
 
         started_at = time.perf_counter()
         temp_dir: str | None = None

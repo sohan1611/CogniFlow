@@ -31,7 +31,7 @@
 ## Release gates — must all pass before submitting
 
 ```bash
-make test        # 213 passed, 1 skipped
+make test        # 253 passed, 1 skipped
 make verify      # 7/7 self-checks, path recursion -> functions -> recursion
 make ablation    # three-arm table reproduces
 make scan        # exit 0

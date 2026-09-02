@@ -13,6 +13,11 @@ from app.models.execution import ExecutionResult, ExecutionStatus
 def classify(result: ExecutionResult) -> StudentOutcome | SystemFault:
     """Map an ExecutionResult onto exactly one disjoint taxonomy branch."""
 
+    # A refusal is checked FIRST and before `started`, because blocked code never runs
+    # and therefore never starts -- without this it would be misreported as a sandbox
+    # failure, which is a different and misleading claim.
+    if result.status == ExecutionStatus.BLOCKED:
+        return SystemFault.EXECUTION_REFUSED
     if result.status == ExecutionStatus.SANDBOX_ERROR:
         return SystemFault.SANDBOX_FAILURE
     if not result.started:

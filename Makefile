@@ -1,7 +1,7 @@
 # CogniFlow — one command per thing a judge or teammate needs.
 PY := .venv/Scripts/python.exe      # on Linux/macOS: .venv/bin/python
 
-.PHONY: install smoke test ingest demo verify live ablation ui scan clean
+.PHONY: install smoke test ingest demo verify live ablation ui space scan clean
 
 install:            ## create the venv and install pinned dependencies
 	py -3.14 -m venv .venv
@@ -37,3 +37,11 @@ ablation:           ## three-arm study, BKT fitting, retrieval quality (costs no
 
 ui:                 ## Streamlit UI - watch the demo, or be the student yourself
 	$(PY) -m streamlit run ui.py
+
+space:              ## assemble build/space, ready to push to Hugging Face
+	rm -rf build/space
+	mkdir -p build/space
+	cp -r app data ui.py conftest.py build/space/
+	cp deploy/space/app.py deploy/space/README.md deploy/space/requirements.txt build/space/
+	rm -rf build/space/data/chroma build/space/data/*.db
+	@echo "build/space ready - see deploy/DEPLOY.md"

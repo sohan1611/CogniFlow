@@ -232,7 +232,7 @@ behaviour.
 | 8 | Event stream, CLI demo, UI | ✅ Verified |
 | 9 | Submission documents, clean-clone gate | ✅ Verified |
 
-**213 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
+**253 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
 isn't installed). Everything marked ✅ is independently test-verified, not self-reported.
 
 Phase 2 highlights, each verified by running it rather than by inspection:
@@ -338,6 +338,8 @@ Keys are read from the environment only and are never committed.
 | [Architecture](docs/ARCHITECTURE.md) | layers, graph, safety property, Mermaid diagrams |
 | [Demo script](docs/DEMO_SCRIPT.md) | 4:30 video walkthrough with Q&A preparation |
 | [Submission checklist](docs/SUBMISSION_CHECKLIST.md) | release gates and what remains |
+| [Ablation](docs/ABLATION.md) | what was measured, what failed, and what was deliberately not built |
+| [Deploying](deploy/DEPLOY.md) | hosting it publicly, and the security position that requires |
 | [Costs](docs/COSTS.md) | zero-rupee build, and what the reserve is for |
 | [Owner's draft](docs/OWNERS_DRAFT.md) | charter, ownership split, cut order |
 
@@ -417,11 +419,14 @@ Stated plainly, because a system that models students should be honest about its
   validated against real learners, and its mastery estimates should not be used to make
   consequential decisions about a person.
 - **The curriculum is narrow** — Python fundamentals, a small hand-authored skill graph.
-- **Student-submitted code is executed.** The default backend runs it in a separate
-  process with a timeout and a minimal environment, so student code cannot read the
-  parent process's API keys. On Windows, memory and network isolation require the
-  optional Docker backend; the sandbox reports its real capability level rather than
-  claiming isolation it does not have.
+- **Student-submitted code is executed**, so it passes a **static allowlist before any
+  process is created**: standard computation modules are available, while filesystem,
+  network, process spawning and introspection escapes are refused. A refusal is a system
+  event and **never affects a student's mastery** — writing a correct function that also
+  imports `os` demonstrates no misconception. Beyond that gate, code runs in a separate
+  process with a timeout and a minimal environment, so it cannot read the host's API
+  keys. On Windows, memory and network isolation require the optional Docker backend;
+  `capability()` reports what is actually in force rather than what would sound better.
 - **No personal data is collected.** Student records are local, synthetic, and keyed by
   an arbitrary identifier.
 - **BKT parameters are literature defaults** unless fitted; any fitted values are

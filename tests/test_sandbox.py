@@ -80,8 +80,15 @@ def test_stdout_is_truncated_and_noted_in_stderr() -> None:
 
 
 def test_child_environment_does_not_inherit_parent_secrets(monkeypatch) -> None:
+    """Defence in depth, tested with restrictions OFF.
+
+    Static restrictions now refuse `import os` outright, so this property can no longer
+    be reached through the normal path. It is still worth proving: restrictions are the
+    first line, and a minimal child environment is the second. A test that only passed
+    because the first line held would tell us nothing about the second.
+    """
     monkeypatch.setenv("ANTHROPIC_API_KEY", "dummy-parent-secret")
-    sandbox = SubprocessSandbox()
+    sandbox = SubprocessSandbox(restrict=False)
     result = sandbox.run(
         "import os\nprint(os.environ.get('ANTHROPIC_API_KEY'))\n",
         timeout_s=1.0,

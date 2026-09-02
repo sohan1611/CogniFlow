@@ -76,6 +76,12 @@ class SystemFault(StrEnum):
     RETRIEVAL_FAILURE = "RETRIEVAL_FAILURE"
     PERSISTENCE_FAILURE = "PERSISTENCE_FAILURE"
     SYSTEM_ERROR = "SYSTEM_ERROR"
+    EXECUTION_REFUSED = "EXECUTION_REFUSED"
+    """Static restrictions refused to run the submission.
+
+    On the SystemFault side deliberately. A student who writes a correct function and
+    also imports `os` has demonstrated no misconception, and their mastery must not move
+    because of a restriction nobody told them about."""
 
 
 CORRECTNESS: dict[StudentOutcome, bool] = {

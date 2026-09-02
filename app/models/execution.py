@@ -20,6 +20,7 @@ class ExecutionStatus(StrEnum):
     SYNTAX_ERROR = "syntax_error"
     RUNTIME_ERROR = "runtime_error"
     SANDBOX_ERROR = "sandbox_error"
+    BLOCKED = "blocked"
 
 
 class SandboxCapability(BaseModel):
