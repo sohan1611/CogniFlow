@@ -314,6 +314,13 @@ def make_generate_problem(deps: GraphDeps) -> Node:
                 "difficulty": str(problem.difficulty),
                 "degraded": outcome.used_fallback,
                 "provider": outcome.provider_used,
+                # Why it degraded, not just that it did. A key that is present but
+                # rejected and a key that was never set both read as degraded=True,
+                # and on a deployment whose logs we cannot open that is the whole
+                # difference. None when the call succeeded, so it renders only when
+                # it has something to say.
+                "fault": str(outcome.fault) if outcome.used_fallback else None,
+                "tried": ",".join(outcome.providers_tried) if outcome.used_fallback else None,
                 "repeat": fp in recent,
             },
             evidence=problem.grounding_sources,
