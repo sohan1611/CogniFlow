@@ -217,6 +217,13 @@ misconception implicates that prerequisite) and `must_return_to_original_objecti
 Misconceptions persist on the skill node, surviving the session and informing future
 problem generation.
 
+**The corpus is aligned with the diagnoser.** Every skill a misconception can implicate
+has its own chapter, and that chapter addresses the misconception it will be fetched
+for: `conditionals` covers conditions that are never satisfied, `loops` covers a
+condition that never becomes false, `variables` covers `NameError` and scope. Without
+that alignment the system would correctly identify a cause and then teach it from
+material that never discusses it. Enforced by `tests/test_corpus_coverage.py`.
+
 ---
 
 ## 6. Persistence - split by lifetime
@@ -301,4 +308,4 @@ are **not mandatory**. Being able to justify an omission is engineering judgemen
 | The architecture actually helps | Three-arm ablation over 80 planted-gap students |
 | The demo is safe to perform live | Determinism test: identical runs produce identical paths |
 
-**195 tests, all offline** — no API key, no network, no spend.
+**204 tests, all offline** — no API key, no network, no spend.

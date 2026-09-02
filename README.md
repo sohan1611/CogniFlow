@@ -232,7 +232,7 @@ behaviour.
 | 8 | Event stream, CLI demo, UI | ✅ Verified |
 | 9 | Submission documents, clean-clone gate | ✅ Verified |
 
-**195 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
+**204 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
 isn't installed). Everything marked ✅ is independently test-verified, not self-reported.
 
 Phase 2 highlights, each verified by running it rather than by inspection:

@@ -91,7 +91,7 @@ Full detail in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 | | |
 |---|---|
-| **195 tests**, all offline | no API key, no network, no spend |
+| **204 tests**, all offline | no API key, no network, no spend |
 | Interrupt/resume | verified **across two OS processes** |
 | Safety invariant | infra failure cannot move mastery — enforced by types, tested adversarially |
 | Sandbox | student code cannot read the parent's API keys (verified with a canary) |
@@ -130,7 +130,8 @@ detour; see [ABLATION.md](ABLATION.md) for the trade-off and the approach that f
   estimates should not drive consequential decisions about a person.
 - **The evaluation is simulated.** The cohort is synthetic, which is what makes exact
   scoring possible — and also what stops it from being evidence about real students.
-- **Narrow curriculum.** Python fundamentals, a hand-authored eight-skill graph.
+- **Narrow curriculum.** Python fundamentals: eight skills, eight hand-authored
+  chapters, ~69 retrievable chunks. Real material for every skill, but one subject.
 - **Sandbox isolation is honestly reported.** On the Windows subprocess backend there is
   no network or memory isolation, and `capability()` says so rather than claiming
   otherwise. The optional Docker backend provides both.

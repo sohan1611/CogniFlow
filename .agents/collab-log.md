@@ -348,3 +348,23 @@ Newest entries at the bottom. Gists only, never secrets.
   controls are real instead. Neither was weakened; both gained rationale and the
   demo-scenario test now pins BOTH directions.
 - 195 passed, 1 skipped. demo --verify and demo --live --verify both 7/7.
+
+## 2026-09-02 - Work order 5: expand the curriculum corpus (Claude -> Codex -> reviewed)
+- MEASURED FIRST and the problem was worse than "thin corpus": 6 of 8 skills had NO
+  material, so skill-filtered retrieval silently WIDENED and served the wrong chapter.
+  A `conditionals` remediation was being taught out of the recursion notes. Nothing
+  looked broken - retrieval degrades quietly, which is the dangerous kind.
+- Spec tied the corpus to the DIAGNOSER rather than just asking for more text: every
+  skill a misconception can implicate must have a chapter that ADDRESSES that
+  misconception. Otherwise the system diagnoses correctly and then teaches from material
+  that never discusses the problem.
+- Claude wrote tests/test_corpus_coverage.py FIRST, red on exactly 4 assertions, so the
+  fix could be verified rather than asserted.
+- Codex authored 6 documents (~1400-1650 words, 7-8 sections each). Quality is genuine
+  teaching prose, and it picked up the cross-linking idiom from the existing chapters -
+  "a Unit 1 problem wearing a Unit 2 costume" echoes the recursion chapter's phrasing.
+  It touched no existing file, no code, no test.
+- VERIFIED: corpus 2 -> 8 documents, 16 -> 69 chunks, all 8 skills covered evenly.
+  Zero fallbacks. All 6 misconception->material alignments confirmed by retrieving the
+  implicated skill and checking the text actually treats it.
+- 204 passed, 1 skipped. demo --verify and --live --verify both 7/7.
