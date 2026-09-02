@@ -1,47 +1,14 @@
-# CogniFlow — one command per thing a judge or teammate needs.
-PY := .venv/Scripts/python.exe      # on Linux/macOS: .venv/bin/python
+# CogniFlow -- convenience wrapper. The real runner is run.py, which works without
+# make (Windows machines usually have no make, including the one this was built on).
+PY := python
 
-.PHONY: install smoke test ingest demo verify live ablation ui space scan clean
+.PHONY: install smoke test ingest demo verify live check ablation ui space scan gates clean help
 
-install:            ## create the venv and install pinned dependencies
-	py -3.14 -m venv .venv
-	$(PY) -m pip install --upgrade pip
-	$(PY) -m pip install -r requirements-dev.txt
+help:               ## list the tasks
+	@$(PY) run.py
 
-smoke:              ## prove the environment works before trusting anything else
-	$(PY) scripts/smoke_test.py
-
-test:               ## full offline suite - no API key, no network, no spend
-	$(PY) -m pytest tests/ -q
-
-ingest:             ## build the retrieval index from data/knowledge
-	$(PY) scripts/ingest_corpus.py
-
-demo:               ## the prerequisite-redirect demo, with the live event stream
-	$(PY) demo.py
-
-verify:             ## the demo, checking its own claims instead of narrating them
-	$(PY) demo.py --verify
-
-live:               ## one real call per configured provider (needs an API key)
-	$(PY) scripts/live_check.py
-
-scan:               ## enforce AGENTS.md RULE 1 before pushing
-	$(PY) scripts/check_contributors.py
+install smoke test ingest demo verify live check ablation ui space scan gates:
+	@$(PY) run.py $@
 
 clean:
-	rm -rf .pytest_cache data/chroma data/*.db .cache/llm_replay
-
-ablation:           ## three-arm study, BKT fitting, retrieval quality (costs nothing)
-	$(PY) scripts/run_ablation.py
-
-ui:                 ## Streamlit UI - watch the demo, or be the student yourself
-	$(PY) -m streamlit run ui.py
-
-space:              ## assemble build/space, ready to push to Hugging Face
-	rm -rf build/space
-	mkdir -p build/space
-	cp -r app data ui.py conftest.py build/space/
-	cp deploy/space/app.py deploy/space/README.md deploy/space/requirements.txt build/space/
-	rm -rf build/space/data/chroma build/space/data/*.db
-	@echo "build/space ready - see deploy/DEPLOY.md"
+	rm -rf .pytest_cache build data/chroma data/*.db .cache/llm_replay

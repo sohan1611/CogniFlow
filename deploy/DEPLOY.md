@@ -1,6 +1,6 @@
 # Deploying CogniFlow
 
-The rulebook accepts a local setup as the runnable version, and `make demo` is that. A
+The rulebook accepts a local setup as the runnable version, and `python run.py demo` is that. A
 hosted link is stronger: a judge can click it without cloning anything.
 
 **Cost: ₹0.** Hugging Face Spaces CPU basic is free, and the app runs on a free Groq key.
@@ -44,7 +44,7 @@ Name it `cogniflow`.
 **2. Build the deployable tree**
 
 ```bash
-make space
+python run.py space
 ```
 
 That assembles `build/space/` — the app package, the curriculum, the UI, and the Space
@@ -91,6 +91,6 @@ broken app.
 ## Honest note for the submission
 
 A hosted Space is a convenience, not the evidence. The reproducible artefact is the
-repository: `make install && make ingest && make verify` runs the whole thing from a
+repository: `python run.py install && python run.py ingest && python run.py verify` runs the whole thing from a
 clean clone and checks its own claims. If the Space is asleep or rate-limited on the day,
 that path still stands.

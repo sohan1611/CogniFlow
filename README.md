@@ -259,6 +259,14 @@ py -3.14 -m venv .venv
 .venv/Scripts/python.exe -m pip install -r requirements-dev.txt
 ```
 
+Every command below is also available through a task runner, which needs nothing beyond
+Python — no `make` required:
+
+```bash
+.venv/Scripts/python.exe run.py          # list the tasks
+.venv/Scripts/python.exe run.py verify   # run one
+```
+
 Verify the environment actually works before trusting anything else:
 
 ```bash

@@ -157,7 +157,7 @@ omissions. Recorded here because each changed a real decision:
 | Framework | "LangGraph / CrewAI" | **CrewAI cannot satisfy this spec.** Checkpointed `interrupt`/`resume` is LangGraph-specific and is the backbone of the human-in-the-loop design. |
 | **Embeddings** | *omitted* | The one RAG line that can actually cost money. Chroma's ONNX path keeps it at ₹0 **and avoids a ~2 GB PyTorch dependency** — the single most valuable correction here. |
 | **Vector store** | *omitted* | Chroma, local persistent. |
-| Hosting | HF Spaces | Correct, but free Spaces sleep. Local `make demo` is the real demo; Spaces is the clickable link. |
+| Hosting | HF Spaces | Correct, but free Spaces sleep. The local run is the real demo; Spaces is the clickable link. |
 
 ---
 

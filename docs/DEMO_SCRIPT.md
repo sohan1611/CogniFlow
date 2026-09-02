@@ -10,12 +10,12 @@
 ## Before you record
 
 ```bash
-make ingest        # build the retrieval index (one-time)
-make live          # if a key is configured, prove the wire format works FIRST
-make verify        # confirm the demo self-checks pass
+python run.py ingest        # build the retrieval index (one-time)
+python run.py live          # if a key is configured, prove the wire format works FIRST
+python run.py verify        # confirm the demo self-checks pass
 ```
 
-Run `make verify` **three times** and confirm the path is identical each time. If it
+Run `python run.py verify` **three times** and confirm the path is identical each time. If it
 varies, stop and fix that before recording — a demo you cannot reproduce is a demo that
 will fail in front of judges.
 
@@ -51,7 +51,7 @@ waiting for it in Q&A.
 
 ---
 
-## 0:45 – 1:30 · Attempt 1 (B runs `make demo`)
+## 0:45 – 1:30 · Attempt 1 (B runs `python run.py demo`)
 
 **Screen:** the live event stream. Pause on these lines:
 
@@ -73,8 +73,10 @@ waiting for it in Q&A.
 
 ```
 [mastery]          recursion  0.204 -> 0.176
+[misconception]    implicates=functions  source=deterministic
+   'recursive call is computed but not returned, so the function yields None'
 [adapt]            action=REVISIT_PREREQUISITE  target_skill=functions
-   reason: repeated failures indicate an unmastered prerequisite
+   reason: diagnosed misconception implicates 'functions'
 [prereq_redirect]  from_skill=recursion -> to_skill=functions
 [plan_action]      target_skill=functions  teaching_mode=CODE_TRACE
 [retrieve]         skill=functions  evidence: 03_functions.md#3.4 The call stack
@@ -84,9 +86,13 @@ waiting for it in Q&A.
 > problem. It walked the prerequisite graph, found `functions` was the weakest unmastered
 > dependency, and **reassigned its own objective**.
 >
-> Look at the teaching mode — it switched to `CODE_TRACE`. It's not repeating the
-> approach that already failed. And retrieval followed it: it's now pulling *The call
-> stack* from the functions chapter."
+> And look at *why*. It read the actual error — a `NoneType` arithmetic failure — and
+> diagnosed the cause: the recursive call is computed but never returned. That's a
+> `return` problem, which is a **functions** problem wearing a recursion costume.
+>
+> The teaching mode switched to `CODE_TRACE`, so it isn't repeating the approach that
+> already failed. And retrieval followed it: it's pulling *The call stack* from the
+> functions chapter."
 
 **Slow down here.** This is the whole project. Give it room.
 
@@ -143,21 +149,22 @@ waiting for it in Q&A.
 
 ---
 
-## 3:45 – 4:20 · Does it actually help? (A runs `make ablation`)
+## 3:45 – 4:20 · Does it actually help? (A runs `python run.py ablation`)
 
 ```
 arm                  mastered   med steps  gap found   false rdr
-A_no_prerequisite      100.0%          14       0.0%        0.0%
-B_rules                100.0%          10      65.0%       25.0%
+A_no_prerequisite      100.0%          16       0.0%        0.0%
+B_rules                100.0%          13      57.5%        7.5%
 ```
 
 > A: "Eighty simulated students, prerequisite gaps *planted* so detection is scored
-> exactly. Prerequisite-aware adaptation reaches mastery in **29% fewer attempts** and
-> finds the gap **65%** of the time. The arm without a skill graph finds it **0%** — it
+> exactly. Prerequisite-aware adaptation reaches mastery in **19% fewer attempts** and
+> finds the gap **57%** of the time. The arm without a skill graph finds it **0%** — it
 > can't, by construction.
 >
-> And the honest cost: it also redirects **25%** of students who had no gap. Diagnosis
-> isn't free, and we report that."
+> And the honest cost: it still redirects **7.5%** of students who had no gap. That was
+> 25% until we required evidence before a detour. Diagnosis isn't free, and we report
+> it."
 
 ---
 
@@ -172,7 +179,7 @@ B_rules                100.0%          10      65.0%       25.0%
 
 ## Optional 20s add-on — the live interrupt
 
-If you have room, `make ui` → **Be the student** → Start session:
+If you have room, `python run.py ui` → **Be the student** → Start session:
 
 > "The graph is suspended at `await_student`, checkpointed to disk. It's not looping —
 > it has genuinely stopped. A *separate process* can resume this thread. Type an
@@ -191,9 +198,9 @@ Strong for the finale, where a judge can type the answer themselves.
 | "Why not just rules?" | Rules can't author a novel exercise grounded in a specific misconception and a specific page. |
 | "Why so few LLM calls?" | We don't use an LLM where arithmetic is already correct and free. |
 | "Is mastery just a counter?" | Bayesian Knowledge Tracing, Corbett & Anderson 1995. Models slip and guess; yields a confidence signal the policy consumes. |
-| "Did you train anything?" | We built BKT parameter fitting. It produced a **negative** result on held-out data, so we ship literature defaults and report it. |
+| "Did you train anything?" | We built BKT parameter fitting. It produced a **negative** result on held-out data, so we ship literature defaults and report it. Same with a retrieval reranker: recall@4 was already 100%, so we measured it and didn't build it. |
 | "Is the sandbox real?" | Separate process, timeout, minimal env — student code can't read our API keys, verified with a canary. `capability()` honestly reports what Windows subprocess *doesn't* isolate. Docker backend adds network and memory isolation. |
-| "What breaks it?" | 25% false-redirect rate. A student with no gap gets an unnecessary detour. It's in the results table. |
+| "What breaks it?" | 7.5% false-redirect rate — a student with no gap still gets an unnecessary detour. It was 25%; requiring evidence cut it. Both numbers are in the results table. |
 
-**If something fails live:** say so plainly, run `make verify`, and keep going. The event
+**If something fails live:** say so plainly, run `python run.py verify`, and keep going. The event
 stream is the evidence; a recovered failure demonstrates the recovery path you claimed.

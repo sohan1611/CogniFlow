@@ -12,7 +12,7 @@
 | 2 | System architecture / workflow | [ARCHITECTURE.md](ARCHITECTURE.md) — Mermaid diagrams, renders in GitHub | ✅ |
 | 3 | Source code / public repo | [github.com/sohan1611/CogniFlow](https://github.com/sohan1611/CogniFlow) | ✅ |
 | 4 | 3–5 minute demo video | [DEMO_SCRIPT.md](DEMO_SCRIPT.md) — script ready | ⬜ **record** |
-| 5 | Runnable / deployed version | `make demo`, `make ui`, `make verify` | ✅ |
+| 5 | Runnable / deployed version | `python run.py demo`, `python run.py ui`, `python run.py verify` | ✅ |
 
 ## Repo hygiene
 
@@ -25,29 +25,29 @@
 | Architecture docs | `docs/ARCHITECTURE.md` | ✅ |
 | Third-party acknowledged (§10) | README acknowledgements | ✅ |
 | Limitations & safeguards stated (§11) | README + BRIEF §6 | ✅ |
-| Contributor list is two humans | `make scan` → exit 0 | ✅ |
+| Contributor list is two humans | `python run.py scan` → exit 0 | ✅ |
 | License | MIT | ✅ |
 
 ## Release gates — must all pass before submitting
 
 ```bash
-make test        # 253 passed, 1 skipped
-make verify      # 7/7 self-checks, path recursion -> functions -> recursion
-make ablation    # three-arm table reproduces
-make scan        # exit 0
+python run.py test        # 253 passed, 1 skipped
+python run.py verify      # 7/7 self-checks, path recursion -> functions -> recursion
+python run.py ablation    # three-arm table reproduces
+python run.py scan        # exit 0
 ```
 
 Plus, on a machine that has never run CogniFlow:
 
 ```bash
 git clone https://github.com/sohan1611/CogniFlow.git
-cd CogniFlow && make install && make ingest && make verify
+cd CogniFlow && python run.py install && python run.py ingest && python run.py verify
 ```
 
 Time it. **If it takes more than five minutes or needs one undocumented step, fix that
 before submitting** — a judge who cannot run it scores only what they can see.
 
-> ⚠️ The first `make ingest` on a fresh machine downloads a **79 MB** embedding model.
+> ⚠️ The first `python run.py ingest` on a fresh machine downloads a **79 MB** embedding model.
 > It is a one-time cost and it is free, but it is *slow*. **Pre-warm it before any live
 > demo** rather than letting a judge watch a progress bar.
 
@@ -58,7 +58,7 @@ before submitting** — a judge who cannot run it scores only what they can see.
 ### 1. ✅ Live API verification — DONE
 
 **Verified against Groq (`openai/gpt-oss-120b`, free tier) on 2 Sep 2026.**
-`make live` passes, and `demo.py --live --verify` passes **all 7 self-checks** with
+`python run.py live` passes, and `demo.py --live --verify` passes **all 7 self-checks** with
 model-authored problems.
 
 Going live found three real defects that offline testing could not:
@@ -104,14 +104,14 @@ a subscription grants no API access. See [COSTS.md §5](COSTS.md).
 
 ### 2. Record the demo video
 
-Follow [DEMO_SCRIPT.md](DEMO_SCRIPT.md). Run `make verify` three times first and confirm
+Follow [DEMO_SCRIPT.md](DEMO_SCRIPT.md). Run `python run.py verify` three times first and confirm
 the path is identical — a demo you cannot reproduce will fail in front of judges.
 
 ### 3. Final pass
 
 - [ ] Re-run all four release gates
 - [ ] Clean-machine clone test, timed
-- [ ] `make scan` immediately before the final push
+- [ ] `python run.py scan` immediately before the final push
 - [ ] Submit **on the 12th**, not the 13th — leave a day of margin
 
 ---
@@ -139,7 +139,7 @@ unscripted demo, and teams bring their own hardware and credentials.
 - [ ] **Mobile hotspot / data pack** — venue Wi-Fi failing mid-demo is the classic way a
       working project dies on stage. Budgeted in [COSTS.md](COSTS.md).
 - [ ] Pre-warm the Chroma model cache on the demo laptop
-- [x] `.env` populated with a working key, `make live` green (Groq free tier)
+- [x] `.env` populated with a working key, `python run.py live` green (Groq free tier)
 - [ ] Rehearse the Q&A table at the end of DEMO_SCRIPT.md
 - [ ] Owner A leads on mastery and safety questions; Owner B on the graph and failure
       handling ([OWNERS_DRAFT.md](OWNERS_DRAFT.md))
