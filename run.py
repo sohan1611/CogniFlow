@@ -35,7 +35,13 @@ def install() -> int:
         launcher = ["py", "-3.14"] if sys.platform == "win32" else [sys.executable]
         if sh(*launcher, "-m", "venv", ".venv"):
             return 1
-    return sh(PY, "-m", "pip", "install", "-q", "-r", "requirements-dev.txt")
+    # Re-resolve rather than reusing PY. On a fresh clone `.venv` did not exist when
+    # this module was imported, so PY is the system interpreter -- and installing with
+    # it puts every dependency outside the venv that was just created. The next task
+    # runs in a new process, finds the venv, and fails on the first import. That is
+    # exactly what a judge cloning this repository would hit.
+    target = str(VENV_PY) if VENV_PY.exists() else PY
+    return sh(target, "-m", "pip", "install", "-q", "-r", "requirements-dev.txt")
 
 
 def smoke() -> int:
