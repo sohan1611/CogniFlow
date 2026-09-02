@@ -321,6 +321,11 @@ def make_generate_problem(deps: GraphDeps) -> Node:
                 # it has something to say.
                 "fault": str(outcome.fault) if outcome.used_fallback else None,
                 "tried": ",".join(outcome.providers_tried) if outcome.used_fallback else None,
+                # Truncated: enough to tell a rejected key from a rate limit from a
+                # network failure, which are three different fixes and are otherwise
+                # one indistinguishable degraded=True. Provider error strings carry
+                # status and reason, never the credential.
+                "why": (outcome.error_message or "")[:90] if outcome.used_fallback else None,
                 "repeat": fp in recent,
             },
             evidence=problem.grounding_sources,
