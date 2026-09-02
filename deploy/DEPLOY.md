@@ -31,15 +31,37 @@ secret cannot silently open it up.
 
 ---
 
+## A note on the SDK
+
+Hugging Face **retired the Streamlit SDK**. The [config reference](https://huggingface.co/docs/hub/spaces-config-reference)
+now accepts only `gradio`, `docker` or `static`, and the New Space form agrees. Docker is
+a paid tier.
+
+So the Space runs a **Gradio** UI (`app_gradio.py`), while `ui.py` remains the local
+Streamlit UI. Both are thin renderers over the same graph — neither decides anything, so
+there is one implementation of the behaviour and two ways to look at it.
+
+---
+
 ## Deploy to Hugging Face Spaces
 
-You need a free account at huggingface.co. **These steps are yours to run — they need
-your account.**
+**These steps need your account, so they are yours to run.**
 
 **1. Create the Space**
 
-huggingface.co → New Space → SDK **Streamlit**, hardware **CPU basic (free)**.
-Name it `cogniflow`.
+huggingface.co → **New Space**
+
+| Field | Value |
+|---|---|
+| Owner | `Rick1611` |
+| Space name | `CogniFlow` |
+| License | `mit` |
+| **SDK** | **Gradio** → template **Blank** |
+| Hardware | **CPU Basic · free** (not ZeroGPU — we need no GPU) |
+| Visibility | **Public** |
+
+The frontmatter in the pushed `README.md` sets the SDK properly on first push, so the
+template choice only matters until then.
 
 **2. Build the deployable tree**
 
@@ -54,10 +76,16 @@ config. It excludes `data/chroma` and the SQLite files, which are rebuilt on fir
 
 ```bash
 cd build/space
-git init && git remote add origin https://huggingface.co/spaces/<your-username>/cogniflow
-git add -A && git commit -m "CogniFlow"
+git init
+git add -A
+git commit -m "CogniFlow"
+git branch -M main
+git remote add origin https://huggingface.co/spaces/Rick1611/CogniFlow
 git push -u origin main
 ```
+
+Git will ask for credentials: your username is `Rick1611`, and the **password is a
+write token** from Settings → Access Tokens. Your account password will not work.
 
 **4. Add the secret**
 
@@ -81,8 +109,8 @@ broken app.
 
 ## What to check once it is live
 
-- [ ] **Watch the demo** produces `recursion → functions → recursion`
-- [ ] **Be the student** shows *"Graph suspended at await_student — checkpointed to disk"*
+- [ ] **Watch the demo** tab produces `recursion → functions → recursion`
+- [ ] **Be the student** tab shows *"Graph suspended at `await_student`"*
 - [ ] Submitting `import os` is refused with a readable message, and mastery does not move
 - [ ] The event stream shows retrieval citations pointing at real chapters
 

@@ -14,4 +14,4 @@ pypdf==6.16.2
 python-dotenv==1.2.3
 structlog==26.1.0
 typer==0.27.2
-streamlit==1.63.0
+gradio==6.26.0

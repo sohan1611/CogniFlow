@@ -3,9 +3,10 @@ title: CogniFlow
 emoji: 🎓
 colorFrom: indigo
 colorTo: green
-sdk: streamlit
-sdk_version: 1.63.0
+sdk: gradio
+sdk_version: 6.26.0
 app_file: app.py
+python_version: "3.12"
 pinned: false
 license: mit
 short_description: An agentic tutor that changes its own objective when it works out why you are failing

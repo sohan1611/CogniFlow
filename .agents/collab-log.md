@@ -426,3 +426,26 @@ Newest entries at the bottom. Gists only, never secrets.
   index from scratch and produced recursion -> functions -> recursion with no errors.
 - Cannot deploy myself - it needs the user's Hugging Face account. Exact steps documented.
 - 253 passed, 1 skipped.
+
+## 2026-09-02 - Gradio UI for deployment (Hugging Face retired the Streamlit SDK)
+- The user hit the New Space form and it offered only Static / Gradio / Docker. Checked
+  the docs rather than guessing: the Streamlit page is STALE, but the authoritative
+  config reference says sdk can be "gradio, docker, or static". Docker is a paid tier.
+  So `sdk: streamlit` in our Space README would have failed the build.
+- Told the user before creating anything, laid out the three options with the honest
+  note that the Space was always OPTIONAL - rulebook section 6 accepts a local setup,
+  and the repo already clones-and-runs with self-verification.
+- Built app_gradio.py: three tabs (watch / be the student / how it works). ADDITIVE -
+  ui.py is untouched and still the local Streamlit UI. Both are thin renderers over the
+  same graph, so there is one implementation of the behaviour and two ways to look at it.
+- VERIFIED IN A BROWSER, twice: once against the working tree, once against a CLEAN
+  build/space checkout with no index and no .env.
+  * watch tab: recursion -> functions -> recursion, misconception + recovery events
+  * interactive tab: "Graph suspended at await_student", model-authored problem
+  * SECURITY GATE IN THE UI: submitted `import os` ->
+    status=blocked, started=False, outcome=EXECUTION_REFUSED
+- Space now: sdk gradio 6.26.0, python_version 3.12, app_file app.py. The Space
+  requirements drop streamlit and add gradio; requirements-dev keeps both.
+- Space entry imports `demo` from app_gradio rather than copying it, so the deployed and
+  local versions cannot drift.
+- 253 passed, 1 skipped.

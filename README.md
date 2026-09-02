@@ -292,7 +292,8 @@ Expected path: **recursion -> functions -> recursion**.
 Or drive it yourself in the browser:
 
 ```bash
-.venv/Scripts/python.exe -m streamlit run ui.py
+.venv/Scripts/python.exe -m streamlit run ui.py   # local
+.venv/Scripts/python.exe app_gradio.py            # the deployable build
 ```
 
 Two modes: **watch** the scripted scenario replay step by step, or **be the student** —

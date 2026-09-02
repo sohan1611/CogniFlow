@@ -95,7 +95,7 @@ def space() -> int:
         shutil.rmtree(target)
     target.mkdir(parents=True)
 
-    for item in ("app", "data", "ui.py", "conftest.py"):
+    for item in ("app", "data", "ui.py", "app_gradio.py", "conftest.py"):
         src = ROOT / item
         dst = target / item
         shutil.copytree(src, dst) if src.is_dir() else shutil.copy2(src, dst)
