@@ -31,7 +31,7 @@
 ## Release gates — must all pass before submitting
 
 ```bash
-make test        # 165 passed, 1 skipped
+make test        # 195 passed, 1 skipped
 make verify      # 7/7 self-checks, path recursion -> functions -> recursion
 make ablation    # three-arm table reproduces
 make scan        # exit 0
@@ -125,7 +125,7 @@ its own reach is more credible than one that does not.
 - Evaluation is simulated — exact scoring is possible *because* the cohort is synthetic,
   which is also why it is not evidence about real students
 - Narrow curriculum: Python fundamentals, eight hand-authored skills
-- 25% false-redirect rate on students with no gap — reported in the results table
+- 7.5% false-redirect rate on students with no gap (down from 25%) — see docs/ABLATION.md
 - Windows subprocess sandbox has no network or memory isolation; `capability()` says so,
   and the Docker backend provides both
 

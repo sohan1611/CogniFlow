@@ -13,7 +13,7 @@ from app.models.enums import (
     StudentOutcome,
     TeachingMode,
 )
-from app.models.schemas import AdaptationDecision
+from app.models.schemas import AdaptationDecision, SkillNode
 
 
 MASTERY_THRESHOLD = 0.6
@@ -22,6 +22,24 @@ ESCALATE_THRESHOLD = 0.8
 MAX_LOOPS = 25
 MAX_ATTEMPTS_PER_SKILL = 4
 MAX_PREREQ_DEPTH = 3
+
+# Evidence gates for prerequisite redirects:
+# PREREQ_EVIDENCE_CONFIDENCE prevents the tutor from treating a prior-like
+# mastery estimate as diagnosis-level evidence after only a small number of
+# observations.
+PREREQ_EVIDENCE_CONFIDENCE = 0.5
+# PREREQ_MIN_ATTEMPTS lets repeated direct observations substitute for the
+# confidence scalar when the node has enough concrete attempts behind it.
+PREREQ_MIN_ATTEMPTS = 3
+# PREREQ_REDIRECT_THRESHOLD is the bar for ACTING on a suspected gap, stricter than the
+# practised skill; otherwise the failures are not evidence that the prerequisite
+# explains the struggle.
+PREREQ_REDIRECT_THRESHOLD = 0.45
+"""Secondary bar. Currently NON-BINDING at the chosen evidence budget: with three
+observations every threshold from 0.30 to 0.50 produces identical results, because the
+populations have already separated. Retained as a floor if the evidence budget is ever
+reduced, and documented as inert rather than credited with an improvement it did not
+produce."""
 
 
 @dataclass
@@ -46,6 +64,66 @@ class PolicyContext:
     the two disagree, direct evidence of the error wins -- but only if the hint names a
     genuine, unmastered prerequisite, so it can never redirect somewhere arbitrary.
     """
+
+
+def prerequisite_has_redirect_evidence(
+    ctx: PolicyContext,
+    prerequisite: str,
+) -> bool:
+    """Return whether a prerequisite redirect has enough statistical evidence.
+
+    Invariant: weak prerequisite estimates are not sufficient on their own.
+    PREREQ_EVIDENCE_CONFIDENCE and PREREQ_MIN_ATTEMPTS keep the tutor from
+    acting on a prior-like estimate, while PREREQ_MARGIN requires the
+    prerequisite to be meaningfully weaker than the practised skill before it can
+    explain repeated failures.
+    """
+    node: SkillNode | None = ctx.graph.nodes.get(prerequisite)
+    if node is None:
+        return False
+
+    has_estimate_evidence = (
+        node.confidence >= PREREQ_EVIDENCE_CONFIDENCE
+        or node.attempts >= PREREQ_MIN_ATTEMPTS
+    )
+    # A STRICTER bar to ACT than to NOTICE.
+    #
+    # MASTERY_THRESHOLD (0.6) answers "is this skill mastered?".
+    # PREREQ_REDIRECT_THRESHOLD (0.45) answers a different and more expensive question:
+    # "is this prerequisite broken badly enough to justify abandoning the skill the
+    # student actually came for?" A detour costs the student time and confidence, so
+    # the bar to trigger one is deliberately higher than the bar to record a weakness.
+    #
+    # Empirically this is where the populations separate: after a two-question pre-test
+    # a student whose prerequisite is genuinely fine lands at 0.60-0.94, while one with
+    # a real gap lands at 0.18-0.38. The false redirects were control students who got
+    # unlucky and drifted into the 0.45-0.60 band.
+    #
+    # NOTE for anyone tempted to use a relative margin instead: by the time a redirect
+    # is under consideration the student has failed the TARGET twice, so the target's
+    # estimate has already fallen below the prerequisite's. "Prerequisite must be weaker
+    # than the target" is therefore backwards and can essentially never fire.
+    is_clearly_broken = node.mastery < PREREQ_REDIRECT_THRESHOLD
+    return has_estimate_evidence and is_clearly_broken
+
+
+def misconception_implicates_prerequisite(
+    ctx: PolicyContext,
+    prerequisite: str,
+) -> bool:
+    """Return whether a misconception hint directly implicates this prerequisite.
+
+    Invariant: the hint can bypass statistical evidence only when it names a real
+    unmastered prerequisite of the current target.
+    """
+    if ctx.misconception_hint != prerequisite:
+        return False
+
+    unmastered = ctx.graph.unmastered_prerequisites(
+        ctx.target_skill,
+        MASTERY_THRESHOLD,
+    )
+    return prerequisite in unmastered
 
 
 def decide(ctx: PolicyContext) -> AdaptationDecision:
@@ -135,7 +213,11 @@ def decide(ctx: PolicyContext) -> AdaptationDecision:
         # it names a real unmastered prerequisite of the skill in question.
         hinted = ctx.misconception_hint
         if hinted and hinted in unmastered:
+            # Direct misconception evidence bypasses the statistical evidence
+            # gates; the observed mistake is stronger than estimate confidence.
             weakest = hinted
+        elif weakest is not None and not prerequisite_has_redirect_evidence(ctx, weakest):
+            weakest = None
 
         if weakest is not None and ctx.prereq_depth < MAX_PREREQ_DEPTH:
             return AdaptationDecision(

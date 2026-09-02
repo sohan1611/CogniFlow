@@ -91,7 +91,7 @@ Full detail in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 | | |
 |---|---|
-| **182 tests**, all offline | no API key, no network, no spend |
+| **195 tests**, all offline | no API key, no network, no spend |
 | Interrupt/resume | verified **across two OS processes** |
 | Safety invariant | infra failure cannot move mastery — enforced by types, tested adversarially |
 | Sandbox | student code cannot read the parent's API keys (verified with a canary) |
@@ -106,13 +106,13 @@ prerequisite gap is *planted* — so detection is scored exactly rather than jud
 
 | | no prerequisite awareness | CogniFlow |
 |---|---|---|
-| Median attempts to true mastery | 14 | **10** (29% fewer) |
-| Planted gap identified | **0%** | **65%** |
-| Error in its model of the student | 0.211 | **0.106** (halved) |
-| Redirected a student with no gap | 0% | 25% |
+| Median attempts to true mastery | 16 | **13** (19% fewer) |
+| Planted gap identified | **0%** | **57.5%** |
+| Error in its model of the student | 0.205 | **0.130** (37% lower) |
+| Redirected a student with no gap | 0% | 7.5% |
 
 The last row is the honest cost, reported rather than hidden: diagnosis is not free, and
-one student in four with no gap gets a detour they did not need.
+roughly one student in thirteen with no gap still gets a detour they did not need — down from one in four.
 
 **Why the middle row is the real result.** The no-prerequisite arm finds the gap in 0% of
 cases — not because it is badly tuned, but because it *cannot*, by construction. That is
@@ -121,8 +121,8 @@ argument for the architecture.
 
 **Where this could go.** The prerequisite graph is data, not code. Swapping
 `skills.yaml` and the curriculum corpus retargets the system at a different subject
-entirely. The 25% false-redirect rate is the obvious next thing to attack, most likely
-by requiring more evidence before a detour.
+entirely. The false-redirect rate was cut from 25% to 7.5% by requiring evidence before a
+detour; see [ABLATION.md](ABLATION.md) for the trade-off and the approach that failed.
 
 ## 6. Limitations we are not hiding
 

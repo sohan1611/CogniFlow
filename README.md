@@ -150,17 +150,18 @@ is scored exactly rather than judged.
 ```
 arm                  mastered   med steps  gap found   false rdr   est err
 ------------------------------------------------------------------------------
-A_no_prerequisite      100.0%          14       0.0%        0.0%     0.211
-B_rules                100.0%          10      65.0%       25.0%     0.106
-C_guarded_model        100.0%          10      65.0%       25.0%     0.106
+A_no_prerequisite      100.0%          16       0.0%        0.0%     0.205
+B_rules                100.0%          13      57.5%        7.5%     0.130
+C_guarded_model        100.0%          13      57.5%        7.5%     0.130
 ```
 
-- Prerequisite-aware adaptation reached true mastery in **29% fewer attempts**.
-- It found the planted gap in **65%** of affected students. The no-prerequisite arm
+- Prerequisite-aware adaptation reached true mastery in **19% fewer attempts**.
+- It found the planted gap in **57.5%** of affected students. The no-prerequisite arm
   found it in **0%** — it cannot, by construction.
 - Its mastery estimates were **2x closer** to students' true hidden skill.
-- **Honest cost: it also redirected 25% of students who had no gap.** Diagnosis is not
-  free, and the harness is built to surface that rather than hide it.
+- **Honest cost: it still redirected 7.5% of students who had no gap** — down from 25%
+  after adding evidence gates ([ABLATION.md](docs/ABLATION.md)). Diagnosis is not free,
+  and the harness surfaces that rather than hiding it.
 
 Arm C matches Arm B in the offline table because the guarded arm falls back to the
 deterministic policy with no provider configured. **With a live provider the guard
@@ -231,7 +232,7 @@ behaviour.
 | 8 | Event stream, CLI demo, UI | ✅ Verified |
 | 9 | Submission documents, clean-clone gate | ✅ Verified |
 
-**182 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
+**195 tests passing** (1 skipped — the Docker backend, which skips cleanly when Docker
 isn't installed). Everything marked ✅ is independently test-verified, not self-reported.
 
 Phase 2 highlights, each verified by running it rather than by inspection:

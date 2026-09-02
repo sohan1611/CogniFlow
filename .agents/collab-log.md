@@ -312,3 +312,39 @@ Newest entries at the bottom. Gists only, never secrets.
     a diagnosed cause is evidence.
   * demo.py and ui.py were not displaying MISCONCEPTION events at all.
 - 182 passed, 1 skipped. demo.py --live --verify passes all 7 checks.
+
+## 2026-09-02 - Work order 4: false-redirect reduction (Claude -> Codex -> heavily reviewed)
+- Task: cut the 25% false-redirect rate without losing gap detection. Numeric acceptance
+  criteria: false < 12%, gap > 55%, 182 existing tests still passing.
+- Codex: implemented the spec faithfully and, to its credit, REFUSED TO FAKE the ablation
+  numbers - it marked them pending because it could not run anything. Exactly right.
+- REVIEW FOUND FOUR PROBLEMS, one of them MINE:
+  1. IndentationError in guard.py - a mechanical splice error, fixed.
+  2. MY SPEC WAS CONCEPTUALLY BACKWARDS. I asked for a relative margin ("prerequisite
+     must be meaningfully weaker than the target"). But by the time a redirect is
+     considered the student has failed the TARGET twice, so the target's estimate is
+     already BELOW the prerequisite's. The gate could never fire. Measured result: gap
+     detection dropped to 0% - arm B became identical to arm A. Codex implemented my
+     spec correctly; the spec was wrong.
+  3. Codex's guard test had a broken _violation_ids helper (iterated model fields
+     instead of reading .violated_rules). Rewrote the test file.
+  4. Its chosen constants were unreachable: PREREQ_MIN_ATTEMPTS=3 against a 2-attempt
+     pre-test budget, so no redirect could ever pass.
+- CLAUDE RAN THE GRID Codex could not. Findings:
+  * absolute threshold: a CLIFF not a curve (0.40 -> 65%/25%, 0.35 -> 42.5%/5%). No
+    setting met both targets, because with 2 observations the posterior lands on a
+    handful of discrete values.
+  * THE REAL FIX IS EVIDENCE, NOT TUNING. A third pre-test observation separates the
+    populations: 57.5% gap / 7.5% false. Four is WORSE than three on both axes.
+  * The evidence budget is now DERIVED: the policy needs confidence >= 0.5 to redirect,
+    and confidence_from_attempts crosses 0.5 at three observations.
+  * PREREQ_REDIRECT_THRESHOLD is currently INERT (every value 0.30-0.50 identical).
+    Documented as inert rather than credited with an improvement it did not produce.
+- FINAL: false redirect 25% -> 7.5% (3.3x lower), gap 65% -> 57.5%, steps 10 -> 13.
+  Trade stated openly in docs/ABLATION.md including the approach that failed.
+- Two pre-existing tests needed updating, both legitimately: one fixture had attempts=0
+  (a prior, which the policy now correctly refuses to act on) and one canary asserted
+  false_redirect_rate > 0 on the premise that zero would be suspicious - now checks the
+  controls are real instead. Neither was weakened; both gained rationale and the
+  demo-scenario test now pins BOTH directions.
+- 195 passed, 1 skipped. demo --verify and demo --live --verify both 7/7.

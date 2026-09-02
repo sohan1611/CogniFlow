@@ -149,15 +149,30 @@ def test_prerequisite_awareness_beats_drilling(base_nodes) -> None:
     assert b.mean_estimate_error < a.mean_estimate_error, "should model students better"
 
 
-def test_false_redirect_rate_is_reported_not_hidden() -> None:
-    """Diagnosis has a cost, and the harness must surface it."""
+def test_false_redirect_rate_is_reported_and_the_controls_are_real() -> None:
+    """Diagnosis has a cost, and the harness must surface it.
+
+    This previously asserted the rate was NON-ZERO, on the premise that a policy which
+    never false-fires must have broken controls. After evidence gates cut the rate from
+    25% to 7.5% a zero reading at small n became a legitimate outcome, so the canary now
+    checks the thing it actually cared about: that control students exist, that they are
+    genuinely un-gapped, and that a redirect on one WOULD be counted.
+    """
+    from eval.simulator import PREREQ_HELD, make_cohort
+    from app.mastery.skill_graph import SkillGraph
+    from pathlib import Path as _P
+
+    base = SkillGraph.from_yaml(_P("app/config/skills.yaml")).nodes
+    cohort = make_cohort(base, n=40)
+    controls = [(s, g) for s, g in cohort if not g]
+    assert controls, "no control students -- the false-redirect metric would be vacuous"
+    for student, _ in controls:
+        assert student.true_skill["functions"] >= PREREQ_HELD, "control is secretly gapped"
+
     summaries = run_ablation(n=40)
     b = summaries[Arm.RULES]
     assert 0.0 <= b.false_redirect_rate <= 1.0
-    assert b.false_redirect_rate > 0.0, (
-        "a redirect policy with a literally zero false-positive rate would be "
-        "suspicious; if this ever passes, check the controls are real"
-    )
+    assert b.false_redirect_rate < 0.15, "evidence gates should keep this low"
 
 
 def test_ablation_is_deterministic() -> None:

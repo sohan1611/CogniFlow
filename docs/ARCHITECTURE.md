@@ -171,6 +171,8 @@ Invariants the guard enforces:
 | `prereq_depth_exceeded` | bounded remediation depth |
 | `repeated_failure_needs_investigation` | cannot merely lower difficulty while a prerequisite gap exists |
 | `loop_limit` | limits breached → only `COMPLETE` |
+| `redirect_without_sufficient_evidence` | a detour needs evidence, or a misconception backing it |
+| `premature_redirect_without_evidence` | a single failure is not grounds for abandoning a skill |
 
 This buys three things at once: the model cannot corrupt a learning path, the override
 rate is a measurable quantity, and **the demo's path holds even if the model says
@@ -299,4 +301,4 @@ are **not mandatory**. Being able to justify an omission is engineering judgemen
 | The architecture actually helps | Three-arm ablation over 80 planted-gap students |
 | The demo is safe to perform live | Determinism test: identical runs produce identical paths |
 
-**182 tests, all offline** — no API key, no network, no spend.
+**195 tests, all offline** — no API key, no network, no spend.

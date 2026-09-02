@@ -10,6 +10,8 @@ from app.mastery.policy import (
     MAX_ATTEMPTS_PER_SKILL,
     MAX_LOOPS,
     MAX_PREREQ_DEPTH,
+    misconception_implicates_prerequisite,
+    prerequisite_has_redirect_evidence,
     PolicyContext,
     decide,
 )
@@ -82,6 +84,21 @@ def _violated_rules(decision: AdaptationDecision, ctx: PolicyContext) -> list[st
         and ctx.misconception_hint != decision.target_skill
     ):
         violations.append("premature_redirect_without_evidence")
+
+    # A redirect must rest on evidence the tutor is entitled to trust. An estimate
+    # built from two observations is barely better than the prior, so acting on it
+    # sends students with perfectly good prerequisites on detours they do not need.
+    # A diagnosed misconception bypasses this: direct evidence of the actual mistake
+    # outranks any statistical margin.
+    if (
+        decision.action == AdaptationAction.REVISIT_PREREQUISITE
+        and not ctx.prereq_return_stack
+        and decision.target_skill is not None
+        and decision.target_skill in ctx.graph.prerequisites(ctx.target_skill)
+        and not misconception_implicates_prerequisite(ctx, decision.target_skill)
+        and not prerequisite_has_redirect_evidence(ctx, decision.target_skill)
+    ):
+        violations.append("redirect_without_sufficient_evidence")
 
     if decision.action == AdaptationAction.REVISIT_PREREQUISITE:
         unmastered = ctx.graph.unmastered_prerequisites(ctx.target_skill, MASTERY_THRESHOLD)

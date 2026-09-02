@@ -38,9 +38,18 @@ from app.models.schemas import SkillNode
 from eval.simulator import SimulatedStudent
 
 MAX_STEPS = 40
-PRETEST_ATTEMPTS = 2
+PRETEST_ATTEMPTS = 3
 """Attempts per direct prerequisite before teaching begins. Charged to every arm's
-budget equally, so no arm buys information the others do not pay for."""
+budget equally, so no arm buys information the others do not pay for.
+
+THREE, not two, and the number is derived rather than chosen: the policy refuses to
+redirect on a prerequisite whose estimate has confidence below 0.5, and
+confidence_from_attempts only crosses 0.5 at the third observation. The diagnostic
+budget therefore follows the evidence the policy requires, instead of the policy being
+tuned to whatever the budget happened to be.
+
+Measured effect: false redirects fall from 25% to 7.5% while gap detection goes from
+65% to 57.5%, at a cost of ~3 extra median steps."""
 
 
 class Arm(StrEnum):
