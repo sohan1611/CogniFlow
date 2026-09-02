@@ -130,6 +130,19 @@ def main() -> int:
         arrow = "up" if after > before else "down"
         print(f"    {skill:12} {before:.3f} -> {after:.3f}  ({arrow})")
 
+    if result.adaptation_count:
+        print()
+        print("  Guard oversight:")
+        print(f"    {len(result.guard_overrides)} of {result.adaptation_count} "
+              f"adaptation decisions overruled ({result.override_rate * 100:.0f}%)")
+        for payload in result.guard_overrides:
+            print(f"      model proposed {payload.get('proposed')} -> guard chose "
+                  f"{payload.get('final')}")
+            print(f"        violated: {', '.join(str(r) for r in payload.get('violated', []))}")
+        if not result.guard_overrides:
+            print("      (none this run - with no provider the model is a stub and")
+            print("       proposes nothing, so there is nothing to overrule)")
+
     recoveries = events.of_type(EventType.RECOVERY)
     if recoveries:
         print()

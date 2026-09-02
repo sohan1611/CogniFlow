@@ -116,6 +116,35 @@ class DemoResult:
     mastery_before: dict[str, float] = field(default_factory=dict)
     mastery_after: dict[str, float] = field(default_factory=dict)
 
+    @property
+    def guard_overrides(self) -> list[dict[str, Any]]:
+        """Every decision where the deterministic guard overruled the model.
+
+        This is the ablation headline that only exists with a live provider: offline the
+        model is a stub, so it proposes nothing to override.
+        """
+        from app.services.events import EventType
+
+        return [e.payload for e in self.events.of_type(EventType.GUARD_OVERRIDE)]
+
+    @property
+    def adaptation_count(self) -> int:
+        from app.services.events import EventType
+
+        return len(self.events.of_type(EventType.ADAPTATION))
+
+    @property
+    def override_rate(self) -> float:
+        """Fraction of adaptation decisions the guard had to correct."""
+        return len(self.guard_overrides) / max(self.adaptation_count, 1)
+
+    def violated_rules(self) -> list[str]:
+        """Which invariants the model actually tried to breach, in order."""
+        out: list[str] = []
+        for payload in self.guard_overrides:
+            out.extend(str(r) for r in payload.get("violated", []))
+        return out
+
     def redirected_to(self) -> str | None:
         """The skill the agent detoured to, if it detoured at all."""
         from app.services.events import EventType

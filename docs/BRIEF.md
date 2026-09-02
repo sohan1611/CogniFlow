@@ -91,7 +91,7 @@ Full detail in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 | | |
 |---|---|
-| **204 tests**, all offline | no API key, no network, no spend |
+| **213 tests**, all offline | no API key, no network, no spend |
 | Interrupt/resume | verified **across two OS processes** |
 | Safety invariant | infra failure cannot move mastery — enforced by types, tested adversarially |
 | Sandbox | student code cannot read the parent's API keys (verified with a canary) |

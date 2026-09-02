@@ -387,8 +387,24 @@ def make_execute_and_grade(deps: GraphDeps) -> Node:
                 "error_type": StudentOutcome.WRONG_ANSWER.value,
             }
 
-        cases = problem.get("test_cases") or []
+        raw_cases = problem.get("test_cases") or []
         expected = (problem.get("expected_output") or "").strip()
+
+        # Keep only cases that can actually decide pass/fail. A model will happily emit
+        # test_cases carrying stdin but no expectation, alongside a usable top-level
+        # expected_output -- and an unusable case must not shadow a usable field, or
+        # every submission fails against an empty string.
+        cases = [
+            case
+            for case in raw_cases
+            if isinstance(case, dict)
+            and str(
+                case.get("expected_output")
+                or case.get("expected")
+                or case.get("output")
+                or ""
+            ).strip()
+        ]
         if not cases and expected:
             cases = [{"name": "default", "stdin": "", "expected_output": expected}]
 

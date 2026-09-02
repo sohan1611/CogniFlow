@@ -131,3 +131,51 @@ def test_injected_fault_mid_suite_aborts_without_student_failure() -> None:
     outcome = classify(suite.first_failure.execution)
     assert outcome == SystemFault.SANDBOX_FAILURE
     assert is_student_evidence(outcome) is False
+
+
+def test_empty_expectations_do_not_shadow_a_usable_one() -> None:
+    """Regression: a live model emitted test_cases with EMPTY expectations.
+
+    The model produced a perfectly good top-level `expected_output` AND a `test_cases`
+    list whose entries carried stdin but no expectation. Those unusable cases were being
+    honoured, so every submission was compared against "" and failed -- which made the
+    headline demo fail 2 runs in 5 against a real provider.
+
+    Unusable cases must be skipped, never allowed to decide pass/fail.
+    """
+    from app.tools.sandbox.runner import run_test_cases
+    from app.tools.sandbox.subprocess_sandbox import SubprocessSandbox
+
+    sandbox = SubprocessSandbox()
+    shadowing = [
+        {"name": "a", "stdin": "", "expected_output": ""},
+        {"name": "b", "stdin": "", "expected_output": "   "},
+        {"name": "c", "stdin": ""},
+    ]
+    suite = run_test_cases(sandbox, "print(15)", shadowing)
+    assert suite.total_count == 0, "cases with no expectation must not be scored"
+
+
+def test_a_correct_submission_passes_when_only_expected_output_is_usable() -> None:
+    """The end-to-end shape of the same bug, through the grading node."""
+    from app.graph.deps import GraphDeps
+    from app.graph.nodes import make_execute_and_grade
+    from app.services.events import EventLog
+    from app.services.student_store import StudentStore
+
+    deps = GraphDeps.offline(StudentStore(":memory:"), EventLog())
+    node = make_execute_and_grade(deps)
+
+    state = {
+        "target_skill": "functions",
+        "student_code": "print(15)",
+        "current_problem": {
+            "expected_output": "15",
+            # the shape a real model produced: stdin present, expectation absent
+            "test_cases": [{"name": "t1", "stdin": ""}, {"name": "t2", "stdin": ""}],
+        },
+    }
+    patch = node(state)  # type: ignore[arg-type]
+    assert patch["grader_result"]["passed"] is True, (
+        "unusable test cases shadowed the usable expected_output"
+    )

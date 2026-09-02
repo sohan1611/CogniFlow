@@ -32,7 +32,7 @@ scan:               ## enforce AGENTS.md RULE 1 before pushing
 clean:
 	rm -rf .pytest_cache data/chroma data/*.db .cache/llm_replay
 
-ablation:           ## the three-arm study plus BKT fitting (costs nothing)
+ablation:           ## three-arm study, BKT fitting, retrieval quality (costs nothing)
 	$(PY) scripts/run_ablation.py
 
 ui:                 ## Streamlit UI - watch the demo, or be the student yourself

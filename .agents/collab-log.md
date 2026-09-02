@@ -368,3 +368,31 @@ Newest entries at the bottom. Gists only, never secrets.
   Zero fallbacks. All 6 misconception->material alignments confirmed by retrieving the
   implicated skill and checking the text actually treats it.
 - 204 passed, 1 skipped. demo --verify and --live --verify both 7/7.
+
+## 2026-09-02 - Optional improvements: retrieval quality + guard-override metric (Claude)
+- RETRIEVAL: built eval/retrieval_eval.py with 14 ground-truth cases drawn from the two
+  real consumers (remediation queries, and the diagnoser's own misconception labels
+  verbatim). MEASURED BEFORE OPTIMISING.
+    recall@1 92.9%, recall@4 100.0%, MRR 0.964
+  recall@4 is 100%, and that is the metric that matters: the model sees all 4 chunks, so
+  a correct chunk at rank 3 is as usable as rank 1. A reranker only reorders within the
+  retrieved set and the right chunk is ALREADY always in it.
+  => RERANKER MEASURED AND DELIBERATELY NOT BUILT. Same discipline as the BKT negative.
+- GUARD OVERRIDE: now a first-class metric on DemoResult (guard_overrides, override_rate,
+  violated_rules) and printed by demo.py. Live run: 3 of 6 decisions overruled (50%),
+  catching premature_redirect_without_evidence, redirect_without_sufficient_evidence and
+  advance_requires_mastery.
+- THE BIG FIND. Measuring the override rate required running the demo live REPEATEDLY,
+  which exposed something a single run never would:
+    run1 7/7  run2 7/7  run3 6/7  run4 7/7  run5 4/7
+  THE HEADLINE PATH FAILED 2 RUNS IN 5. Run 5 never returned to recursion at all.
+  Cause: the model emits test_cases carrying stdin but NO expectation, alongside a
+  perfectly usable top-level expected_output. Those unusable cases were honoured, so
+  every submission was compared against "" and failed regardless of correctness; the
+  student never mastered functions, so the return never fired.
+  Fixed in two places: the runner now skips empty expectations, and the grading node
+  filters unusable cases before falling back to expected_output.
+  After the fix: 5/5 runs at 7/7.
+  A single green run would have gone straight into the recorded video and the failure
+  would have surfaced in front of a jury instead.
+- 213 passed, 1 skipped. Two regression tests pin the shadowing bug.

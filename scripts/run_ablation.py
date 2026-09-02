@@ -18,12 +18,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from eval.ablation import Arm, render, run_ablation  # noqa: E402
 from eval.bkt_fit import fit_and_report  # noqa: E402
+from eval.retrieval_eval import evaluate, evaluate_by_kind  # noqa: E402
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="CogniFlow ablation study")
     ap.add_argument("-n", type=int, default=80, help="cohort size per arm")
     ap.add_argument("--skip-bkt", action="store_true")
+    ap.add_argument("--skip-retrieval", action="store_true")
     ap.add_argument("--out", type=Path, help="write results as JSON")
     args = ap.parse_args()
     logging.disable(logging.WARNING)
@@ -103,6 +105,32 @@ def main() -> int:
             print("  Note the defaults already reach ~0.85 AUC against a generative")
             print("  process BKT cannot represent, which is a result in itself.")
         payload["bkt_fitting"] = reports
+
+    if not args.skip_retrieval:
+        print()
+        print("=" * 78)
+        print("RETRIEVAL QUALITY")
+        print("=" * 78)
+        print("Ground-truth cases drawn from the two real consumers: remediation, and the")
+        print("misconception diagnoser (queries are the diagnoser's own labels verbatim).")
+        retrieval = evaluate()
+        print(retrieval.render())
+        print()
+        for kind, res in evaluate_by_kind().items():
+            print(f"  {kind:<14} recall@1 {res.recall_at_1 * 100:5.1f}%   "
+                  f"recall@{res.k} {res.recall_at_k * 100:5.1f}%   MRR {res.mrr:.3f}")
+        print()
+        if retrieval.recall_at_k >= 1.0:
+            print("  RESULT: the correct section reaches the model in EVERY case.")
+            print("  A reranker would only reorder chunks that are already all present,")
+            print("  so it was measured and deliberately NOT built. Same discipline as")
+            print("  the BKT fitting result: measure first, and report a negative.")
+        payload["retrieval"] = {
+            "recall_at_1": retrieval.recall_at_1,
+            "recall_at_k": retrieval.recall_at_k,
+            "mrr": retrieval.mrr,
+            "cases": retrieval.total,
+        }
 
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)

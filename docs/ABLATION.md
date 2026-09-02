@@ -145,3 +145,82 @@ somewhere arbitrary — asserted in `tests/test_policy_evidence.py`.
 `redirect_without_sufficient_evidence` applies the same gates to model proposals. A
 model may suggest a detour the rules would not take; the guard stops it unless a
 misconception backs it up.
+
+
+---
+
+## Retrieval quality — measured, and deliberately not optimised
+
+Retrieval failures are invisible: something always comes back and it always looks
+plausible. So the top chunks were checked against ground truth rather than eyeballed.
+
+Fourteen cases drawn from the two real consumers — remediation queries, and the
+misconception diagnoser's own labels verbatim:
+
+```
+  recall@1    92.9%   the right section is the top hit
+  recall@4   100.0%   it appears anywhere in the context
+  MRR        0.964   1.0 means always first
+
+  misconception  recall@1  80.0%   recall@4 100.0%   MRR 0.900
+  remediation    recall@1 100.0%   recall@4 100.0%   MRR 1.000
+```
+
+**recall@4 is 100%, and that is the metric that matters here.** The model sees all four
+retrieved chunks, so a correct chunk at rank 3 is as usable as one at rank 1. A reranker
+only reorders within the retrieved set — and the right chunk is already always in it.
+
+**So a reranker was measured and deliberately not built.** Same discipline as the BKT
+fitting result: measure first, and be willing to report that the improvement is not
+there. Gated by `tests/test_retrieval_quality.py` so a corpus or chunker regression
+fails loudly.
+
+---
+
+## Guard override rate — now a reported metric
+
+Previously measured ad hoc. `DemoResult` now exposes it, and `demo.py` prints it.
+
+A representative live run:
+
+```
+  Guard oversight:
+    3 of 6 adaptation decisions overruled (50%)
+      model proposed REVISIT_PREREQUISITE -> guard chose RETRY_VARIATION
+        violated: premature_redirect_without_evidence, redirect_without_sufficient_evidence
+      model proposed ADVANCE -> guard chose REASSESS
+        violated: advance_requires_mastery
+```
+
+Offline the rate is zero and that is a fact about the run, not a broken guard: with no
+provider the model is a stub and proposes nothing to overrule. Both facts are pinned by
+tests.
+
+---
+
+## Live demo stability — the bug this exercise found
+
+Measuring the override rate meant running the demo live repeatedly, which exposed
+something a single run would never have shown:
+
+```
+  run 1: 7/7    run 2: 7/7    run 3: 6/7    run 4: 7/7    run 5: 4/7
+```
+
+**The headline path failed 2 runs in 5.** Run 5 never returned to recursion at all.
+
+Cause: the model emits `test_cases` carrying `stdin` but **no expectation**, alongside a
+perfectly usable top-level `expected_output`. Those unusable cases were being honoured,
+so every submission was compared against `""` and failed regardless of correctness. The
+student then never mastered `functions`, so the return to recursion never fired.
+
+Unusable cases are now skipped and can no longer shadow a usable expectation. After the
+fix:
+
+```
+  run 1: 7/7    run 2: 7/7    run 3: 7/7    run 4: 7/7    run 5: 7/7
+```
+
+Pinned by two regression tests. **This is the strongest argument for measuring live
+repeatedly rather than once:** a single green run would have gone straight into a
+recorded video, and the failure would have surfaced in front of a jury instead.

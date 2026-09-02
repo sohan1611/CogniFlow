@@ -40,9 +40,12 @@ def run_test_cases(
             if raw_case.get("expected_output") is not None
             else raw_case.get("expected", raw_case.get("output"))
         )
-        if expected_raw is None:
-            # A case with nothing to compare against is not a test. Skipping is
-            # correct: inventing an expectation would fabricate student evidence.
+        if expected_raw is None or not str(expected_raw).strip():
+            # A case with nothing to compare against is not a test. Models routinely
+            # emit test_cases with EMPTY expectations alongside a perfectly good
+            # top-level expected_output; treating those as real makes every submission
+            # fail against "". Skipping is correct -- inventing an expectation would
+            # fabricate student evidence.
             continue
         expected = str(expected_raw).strip()
         execution = sandbox.run(student_code, stdin=stdin, timeout_s=timeout_s)
