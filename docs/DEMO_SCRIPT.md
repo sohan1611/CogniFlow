@@ -7,17 +7,52 @@
 
 ---
 
+## Rulebook §7 — say the judges' words
+
+§7 names the workflow a demo should showcase: **Goal → Decision → Action → Evaluation →
+Adaptation → Outcome.** The system already does all six — they are distinct nodes in the
+graph — but an earlier draft of this script never used those six words, which leaves a
+judge holding a rubric to map it themselves. Say the word, then point at the line.
+
+| §7 stage | On screen | Where |
+|---|---|---|
+| **Goal** | `[plan_action] target_skill=recursion` | 0:45 |
+| **Decision** | `[adapt] action=… overridden=…` — model proposes, guard disposes | 1:15 |
+| **Action** | `[retrieve]` then `[generate_problem]`, then `[execute]` in the sandbox | 0:45 |
+| **Evaluation** | `[execute] outcome=…` and `[update_mastery] 0.350 -> 0.204` | 1:15 |
+| **Adaptation** | `[prereq_redirect] recursion -> functions` — **the moment** | 1:30 |
+| **Outcome** | `[finalize] status=COMPLETED`, `recursion 0.35 -> 0.88` | 2:45 |
+
+§7 also asks for **failures, unexpected inputs, tool failures, and changing conditions**.
+Three are already in the run below, and naming them as a set is worth ten seconds:
+
+| §7 asks for | We show |
+|---|---|
+| Tool failure | injected `SANDBOX_FAILURE` → recovery, mastery untouched (2:15) |
+| Changing conditions | Groq hits its 8k-tokens/minute ceiling mid-run and the chain **fails over to Google live** — `provider=google:…` appears in the stream |
+| Unexpected input | `import os` → `EXECUTION_REFUSED`, a SystemFault, mastery unmoved (optional beat) |
+
+---
+
 ## Before you record
 
 ```bash
 python run.py ingest        # build the retrieval index (one-time)
-python run.py live          # if a key is configured, prove the wire format works FIRST
-python run.py verify        # confirm the demo self-checks pass
+python run.py check         # one real call per provider, proves the wire format FIRST
+python run.py live          # the demo against real models, with self-verification
 ```
 
-Run `python run.py verify` **three times** and confirm the path is identical each time. If it
+**Record the live run, not the offline one.** Both free keys are configured, and a live
+run now completes with **zero degraded generation** — every problem is model-authored.
+The offline path prints `degraded=True` and repeats a templated problem, and while §10
+prohibits fabricated *results* rather than templated prose, a judge who sees
+`degraded=True` will reasonably ask what else was not real. Do not hand them that
+question when the live path works.
+
+Run `python run.py live` **three times** and confirm the path is identical each time. If it
 varies, stop and fix that before recording — a demo you cannot reproduce is a demo that
-will fail in front of judges.
+will fail in front of judges. The path is deterministic by construction, so variation
+means something is wrong, not that the model had an off day.
 
 Terminal at ~110 columns, large font. Close everything else.
 
