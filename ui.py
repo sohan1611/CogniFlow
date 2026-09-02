@@ -27,6 +27,7 @@ from langgraph.types import Command  # noqa: E402
 from app.graph.builder import build_graph  # noqa: E402
 from app.graph.deps import GraphDeps  # noqa: E402
 from app.graph.state import initial_state  # noqa: E402
+from app.llm.provider import default_chain  # noqa: E402
 from app.rag.retriever import Retriever  # noqa: E402
 from app.services.demo_runner import (  # noqa: E402
     DEMO_SEED,
@@ -51,13 +52,26 @@ def _bridge_secrets() -> None:
     environment: if that ever changed, the app would not error - it would silently fall
     back to templated problems, which is the failure mode this project keeps meeting.
     Existing environment values win, so a local .env still takes precedence.
+
+    Secrets are TOML, so a key pasted under a section header (`[groq]`) arrives nested
+    one level down rather than at the top. Both shapes are accepted: a deployment that
+    runs on templates because the key was indented is indistinguishable, from the
+    outside, from one where the key was never set.
     """
     try:
         secrets = dict(st.secrets)
     except Exception:  # noqa: BLE001 - no secrets file locally is normal, not an error
         return
+
+    flat: dict[str, str] = {}
     for key, value in secrets.items():
-        if isinstance(value, str) and not os.environ.get(key):
+        if isinstance(value, str):
+            flat[key] = value
+        elif hasattr(value, "items"):  # a TOML section, not a scalar
+            flat.update({k: v for k, v in value.items() if isinstance(v, str)})
+
+    for key, value in flat.items():
+        if not os.environ.get(key):
             os.environ[key] = value
 
 
@@ -156,6 +170,19 @@ st.sidebar.divider()
 st.sidebar.markdown("**Starting model**")
 for skill, (mastery, _conf) in DEMO_SEED.items():
     st.sidebar.text(f"{skill:22} {mastery:.2f}")
+
+st.sidebar.divider()
+st.sidebar.markdown("**Generation**")
+_reachable = [s.provider for s in default_chain("generate") if s.available()]
+if _reachable:
+    st.sidebar.success(f"live · {_reachable[0]}")
+else:
+    st.sidebar.warning("deterministic templates — no provider key configured")
+    st.sidebar.caption(
+        "Every tutoring decision below is still real: routing, mastery and the "
+        "prerequisite redirect are deterministic and need no model. Only the wording "
+        "of each problem is templated."
+    )
 
 
 # ================================================================ watch mode
