@@ -38,6 +38,27 @@ from app.services.student_store import StudentStore  # noqa: E402
 
 st.set_page_config(page_title="CogniFlow", page_icon="🎓", layout="wide")
 
+
+@st.cache_resource(show_spinner="Building the retrieval index (first run only)…")
+def _bootstrap() -> int:
+    """Index the corpus if it is not already indexed.
+
+    The index is gitignored, so any host that deploys straight from the repository
+    starts without one. Doing this here means `streamlit run ui.py` works on a fresh
+    clone rather than failing on empty retrieval -- and retrieval failing SILENTLY is
+    exactly the mode this project has already been bitten by once.
+    """
+    from app.rag.ingest import ingest_corpus
+    from app.rag.store import VectorStore
+
+    store = VectorStore()
+    if store.count() == 0:
+        ingest_corpus(Path("data/knowledge"), store=store)
+    return store.count()
+
+
+_bootstrap()
+
 EVENT_STYLE: dict[EventType, tuple[str, str]] = {
     EventType.DIAGNOSTIC: ("🔍", "#3b82f6"),
     EventType.PLAN: ("🗺️", "#6366f1"),

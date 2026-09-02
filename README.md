@@ -348,7 +348,7 @@ Keys are read from the environment only and are never committed.
 | [Demo script](docs/DEMO_SCRIPT.md) | 4:30 video walkthrough with Q&A preparation |
 | [Submission checklist](docs/SUBMISSION_CHECKLIST.md) | release gates and what remains |
 | [Ablation](docs/ABLATION.md) | what was measured, what failed, and what was deliberately not built |
-| [Deploying](deploy/DEPLOY.md) | hosting it publicly, and the security position that requires |
+| [Deploying](deploy/DEPLOY.md) | hosting it free, and the security position that requires |
 | [Costs](docs/COSTS.md) | zero-rupee build, and what the reserve is for |
 | [Owner's draft](docs/OWNERS_DRAFT.md) | charter, ownership split, cut order |
 

@@ -31,7 +31,53 @@ secret cannot silently open it up.
 
 ---
 
-## A note on the SDK
+## Pick a host first
+
+There are two free routes, and the better one depends on your account age.
+
+| | Streamlit Community Cloud | Hugging Face Space (Gradio) |
+|---|---|---|
+| Cost | free | free |
+| UI it runs | `ui.py` — the Streamlit UI | `app_gradio.py` |
+| Deploys from | **your GitHub repo directly** | a separate push of `build/space` |
+| Gotcha | none known | free Gradio Spaces run on **ZeroGPU**, which requires a **verified account older than 30 days** |
+| Effort | ~3 minutes | ~10 minutes |
+
+**Streamlit Community Cloud is the simpler route** and has no account-age gate: it
+deploys straight from `github.com/sohan1611/CogniFlow`, so there is nothing to build or
+push. Use the Hugging Face route if you specifically want the Space, or if Streamlit
+Cloud is unavailable to you.
+
+> On ZeroGPU: CogniFlow uses **no GPU at all**, so it would never request one and never
+> consume the daily GPU quota. It should simply run on the CPU side. But it is
+> infrastructure built for a different job, and the 30-day account gate is a hard stop
+> if your account is new — which is why it is the second option, not the first.
+
+---
+
+## Route A — Streamlit Community Cloud (recommended)
+
+1. Go to **share.streamlit.io** and sign in with GitHub.
+2. **New app** → **Deploy a public app from GitHub**.
+   - Repository: `sohan1611/CogniFlow`
+   - Branch: `main`
+   - Main file path: `ui.py`
+3. **Advanced settings** → Python version **3.12** (3.13 also fine).
+4. **Secrets** — paste this, with your own key:
+
+   ```toml
+   GROQ_API_KEY = "gsk_..."
+   ```
+
+5. **Deploy.** First boot takes a few minutes: it installs dependencies, downloads the
+   ~79 MB embedding model, and indexes the corpus. `ui.py` builds the index itself on
+   first run, so there is nothing to prepare.
+
+Your URL will look like `https://cogniflow.streamlit.app`.
+
+---
+
+## A note on the Hugging Face SDK
 
 Hugging Face **retired the Streamlit SDK**. The [config reference](https://huggingface.co/docs/hub/spaces-config-reference)
 now accepts only `gradio`, `docker` or `static`, and the New Space form agrees. Docker is
