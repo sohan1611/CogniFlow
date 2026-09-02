@@ -47,6 +47,20 @@ cd CogniFlow && python run.py install && python run.py ingest && python run.py v
 Time it. **If it takes more than five minutes or needs one undocumented step, fix that
 before submitting** — a judge who cannot run it scores only what they can see.
 
+**Run on 3 Sep 2026: 90 seconds total** — clone 1s, install 77s, ingest 7s, verify 5s,
+**7/7 self-checks, path `recursion -> functions -> recursion`.** Well inside budget.
+
+> Caveat on that 7s: the embedding model was already cached on the test machine. A
+> genuinely cold machine adds the one-time **79 MB** download — see the warning below.
+
+**This gate earned its place the first time it ran.** It failed, and the failure was
+invisible from a working checkout: `run.py` resolved its interpreter at import time, so
+on a fresh clone — where `.venv` does not exist yet — `python run.py install` installed
+every dependency into the *system* interpreter instead of the venv it had just created.
+The next command then died with `ModuleNotFoundError: No module named 'pydantic'`. A
+judge following the README would have hit a broken checkout and a polluted global
+site-packages. Fixed in `run.py::install`, and re-verified by the timed run above.
+
 > ⚠️ The first `python run.py ingest` on a fresh machine downloads a **79 MB** embedding model.
 > It is a one-time cost and it is free, but it is *slow*. **Pre-warm it before any live
 > demo** rather than letting a judge watch a progress bar.
@@ -136,6 +150,15 @@ its own reach is more credible than one that does not.
 Rulebook §8: **50% of the finale score is defending this build.** §9 requires a live,
 unscripted demo, and teams bring their own hardware and credentials.
 
+Component A is scored on **7 minutes of presentation and live demonstration**, then
+**5 minutes of technical Q&A**, and §8 asks the pitch to cover problem interpretation,
+approach, architecture, agentic workflow, live demonstration, key decisions, and results.
+
+- [x] **Pitch deck** — [CogniFlow_Pitch_Deck.pptx](CogniFlow_Pitch_Deck.pptx), 9 slides,
+      one per §8 topic, speaker notes on every slide. Slide 8 is the cue to leave the deck
+      and drive the terminal; slide 5 names the §7 workflow stages against the event lines
+      that show them. **Rehearse to 7:00** — the deck is sized for it, but only a rehearsal
+      proves it.
 - [ ] **Mobile hotspot / data pack** — venue Wi-Fi failing mid-demo is the classic way a
       working project dies on stage. Budgeted in [COSTS.md](COSTS.md).
 - [ ] Pre-warm the Chroma model cache on the demo laptop
