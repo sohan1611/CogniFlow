@@ -15,6 +15,7 @@ here was produced by the graph. If the UI disappeared, the behaviour would be id
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -37,6 +38,30 @@ from app.services.events import EventLog, EventType  # noqa: E402
 from app.services.student_store import StudentStore  # noqa: E402
 
 st.set_page_config(page_title="CogniFlow", page_icon="🎓", layout="wide")
+
+
+def _bridge_secrets() -> None:
+    """Copy Streamlit secrets into the process environment.
+
+    Streamlit Community Cloud supplies secrets through `st.secrets`. The provider chain
+    reads `os.environ`, because it must also work from a plain CLI run, a test, and a
+    Hugging Face Space. Bridging here means one credential mechanism serves all of them.
+
+    Done explicitly rather than relying on Streamlit mirroring top-level keys into the
+    environment: if that ever changed, the app would not error - it would silently fall
+    back to templated problems, which is the failure mode this project keeps meeting.
+    Existing environment values win, so a local .env still takes precedence.
+    """
+    try:
+        secrets = dict(st.secrets)
+    except Exception:  # noqa: BLE001 - no secrets file locally is normal, not an error
+        return
+    for key, value in secrets.items():
+        if isinstance(value, str) and not os.environ.get(key):
+            os.environ[key] = value
+
+
+_bridge_secrets()
 
 
 @st.cache_resource(show_spinner="Building the retrieval index (first run only)…")
