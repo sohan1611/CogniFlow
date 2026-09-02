@@ -107,7 +107,11 @@ COGNIFLOW_MODEL_ADAPT=claude-haiku-4-5 while leaving generation on Sonnet is a
 sensible way to stretch a fixed credit.
 """
 GROQ_MODEL = os.environ.get("COGNIFLOW_GROQ_MODEL", "openai/gpt-oss-120b")
-GEMINI_MODEL = os.environ.get("COGNIFLOW_GEMINI_MODEL", "gemini-2.0-flash")
+# gemini-2.0-flash was retired by Google and now returns 404, so the previous default
+# would have failed over silently on any fresh clone. Verified by calling this one
+# through with_structured_output, which is the path that actually has to work --
+# gemini-2.5-flash is listed by the models endpoint but 404s the same way.
+GEMINI_MODEL = os.environ.get("COGNIFLOW_GEMINI_MODEL", "gemini-3.8-flash")
 
 
 PROVIDER_ORDER = [

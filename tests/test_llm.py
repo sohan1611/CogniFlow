@@ -168,6 +168,30 @@ def test_exception_classification(exc: Exception, expected: LLMErrorKind) -> Non
     assert classify_exception(exc) is expected
 
 
+def test_langchain_normalized_errors_are_classified() -> None:
+    """A provider's own exception subclasses LangChain's normalized hierarchy.
+
+    Regression: `gemini-2.0-flash` was retired, and the resulting
+    GoogleModelNotFoundError carried no status_code, so it fell through to the
+    RETRYABLE default. Every call then spent its full retry budget waiting for a
+    model that no longer exists before failing over. Classification must come from
+    the hierarchy, not from whether a provider happened to set status_code.
+    """
+    from langchain_core.exceptions import (
+        ModelNotFoundError,
+        ModelRateLimitError,
+    )
+
+    class ProviderModelGone(ModelNotFoundError):
+        """Shaped like langchain_google_genai's GoogleModelNotFoundError."""
+
+    class ProviderThrottled(ModelRateLimitError):
+        """Shaped like langchain_google_genai's GoogleRateLimitError."""
+
+    assert classify_exception(ProviderModelGone("retired")) is LLMErrorKind.PERMANENT
+    assert classify_exception(ProviderThrottled("429")) is LLMErrorKind.RETRYABLE
+
+
 def test_status_code_classification() -> None:
     class Weird(Exception):
         status_code = 503

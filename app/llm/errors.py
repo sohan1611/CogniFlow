@@ -50,6 +50,13 @@ _RETRYABLE_NAMES: frozenset[str] = frozenset(
         "TimeoutError",
         "ReadTimeout",
         "ConnectTimeout",
+        # LangChain's normalized hierarchy (langchain_core.exceptions). Provider
+        # wrappers subclass these, so matching here covers every provider at once
+        # rather than chasing each SDK's own spelling.
+        "ModelRateLimitError",
+        "ModelAPIError",
+        "ModelConnectionError",
+        "ModelTimeoutError",
     }
 )
 
@@ -62,6 +69,16 @@ _PERMANENT_NAMES: frozenset[str] = frozenset(
         "UnprocessableEntityError",
         "RequestTooLargeError",
         "APIResponseValidationError",
+        # Same normalized hierarchy. ModelNotFoundError is the one that bit us: a
+        # retired model name carries no status_code, so it fell through to the
+        # RETRYABLE default and burned three backoff retries per call before failing
+        # over -- on every call, for the whole session. A dead model does not come
+        # back within a demo, and the retry budget exists for blips, not epitaphs.
+        "ModelNotFoundError",
+        "ModelAuthenticationError",
+        "ModelPermissionDeniedError",
+        "ModelInvalidRequestError",
+        "ContextOverflowError",
     }
 )
 

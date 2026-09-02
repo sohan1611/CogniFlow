@@ -179,7 +179,10 @@ st.sidebar.markdown("**Generation**")
 _reachable = [s.provider for s in default_chain("generate") if s.available()]
 LIVE = bool(_reachable)
 if _reachable:
-    st.sidebar.success(f"live · {_reachable[0]}")
+    # The whole chain, not just the leader: with one provider a rate limit ends the
+    # live run, with two it fails over. "Is the second key actually configured?" is
+    # not answerable from a display that only ever names the first.
+    st.sidebar.success("live · " + " → ".join(_reachable))
 else:
     st.sidebar.warning("deterministic templates — no provider key configured")
     st.sidebar.caption(
