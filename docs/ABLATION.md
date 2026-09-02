@@ -1,7 +1,7 @@
 # Reducing the false-redirect rate
 
 **Result: false redirects fell from 25% to 7.5%. Gap detection fell from 65% to 57.5%.**
-Reproduce with `make ablation` — it is deterministic and costs nothing.
+Reproduce with `python run.py ablation` — it is deterministic and costs nothing.
 
 ---
 
