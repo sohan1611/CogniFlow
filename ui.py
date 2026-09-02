@@ -173,7 +173,11 @@ for skill, (mastery, _conf) in DEMO_SEED.items():
 
 st.sidebar.divider()
 st.sidebar.markdown("**Generation**")
+# Whether a model is reachable decides how the graph is built below, so this is a
+# live capability check and not decoration. Reporting one thing and doing another is
+# how a deployment ends up claiming to be live while running on templates.
 _reachable = [s.provider for s in default_chain("generate") if s.available()]
+LIVE = bool(_reachable)
 if _reachable:
     st.sidebar.success(f"live · {_reachable[0]}")
 else:
@@ -208,6 +212,7 @@ if mode == "Watch the demo":
                     Behaviour.SUCCEED,
                 ],
                 inject_fault_on_turn=3,
+                live=LIVE,
             )
         st.session_state["watch"] = (events, result)
 
@@ -250,7 +255,7 @@ else:
         store = StudentStore(":memory:")
         seed_student(store, "you")
         events = EventLog()
-        deps = GraphDeps.offline(store, events)
+        deps = GraphDeps(store, events) if LIVE else GraphDeps.offline(store, events)
         deps.retriever = Retriever()
         st.session_state.update(
             store=store,
