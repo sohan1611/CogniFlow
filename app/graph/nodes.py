@@ -84,6 +84,22 @@ def _difficulty_for(mastery: float) -> Difficulty:
 
 
 # ---------------------------------------------------------------- nodes
+def _error_summary(stderr: str) -> str:
+    """The exception line from a traceback, without the frames above it.
+
+    Python puts the useful sentence last, after the call stack. The stack is ours as
+    much as theirs -- it names the sandbox harness -- so showing it makes a student
+    scroll past our implementation to reach their own mistake.
+    """
+    lines = [ln.strip() for ln in (stderr or "").splitlines() if ln.strip()]
+    if not lines:
+        return ""
+    for line in reversed(lines):
+        if not line.startswith(("File ", "Traceback")):
+            return line[:300]
+    return lines[-1][:300]
+
+
 def _latest_hint(state: AgentState, skill: str) -> str | None:
     """The most recently implicated prerequisite for this skill, if any.
 
@@ -446,7 +462,11 @@ def make_execute_and_grade(deps: GraphDeps) -> Node:
         grade = GradeResult(
             passed=bool(passed and is_student_evidence(outcome) and outcome == StudentOutcome.CORRECT),
             score=float(score),
-            feedback=(exec_result.stderr[:400] if exec_result and exec_result.stderr else ""),
+            # The exception's own last line, not the whole traceback. A student reading
+            # "NameError: name 'tota' is not defined" learns something; the same message
+            # buried under six frames of our sandbox harness does not. Replaced outright
+            # by analyze_misconception when a rule recognises the underlying cause.
+            feedback=_error_summary(exec_result.stderr if exec_result else ""),
             failing_case=failing,
         )
 
@@ -577,7 +597,11 @@ def make_analyze_misconception(deps: GraphDeps) -> Node:
             confidence=analysis.confidence,
         )
 
-        return {
+        # Give the student the diagnosis we just made. Until now `feedback` carried the
+        # raw stderr, which tells someone who already understands the error exactly what
+        # they already knew, and tells everyone else nothing. This node is the first
+        # point where the CAUSE is known, so it is the right place to phrase it.
+        patch: dict[str, Any] = {
             "skill_graph": skills,
             "detected_misconceptions": [
                 *state.get("detected_misconceptions", []),
@@ -589,6 +613,12 @@ def make_analyze_misconception(deps: GraphDeps) -> Node:
                 },
             ],
         }
+        note = found.student_note if found is not None else analysis.misconception
+        if note:
+            grade = dict(state.get("grader_result") or {})
+            grade["feedback"] = note
+            patch["grader_result"] = grade
+        return patch
 
     return analyze_misconception
 

@@ -28,6 +28,7 @@ from app.graph.builder import build_graph  # noqa: E402
 from app.graph.deps import GraphDeps  # noqa: E402
 from app.graph.state import initial_state  # noqa: E402
 from app.llm.provider import default_chain  # noqa: E402
+from app.models.enums import StudentOutcome  # noqa: E402
 from app.rag.retriever import Retriever  # noqa: E402
 from app.services.demo_runner import (  # noqa: E402
     DEMO_SEED,
@@ -146,6 +147,77 @@ def mastery_table(scores: dict[str, float], highlight: str | None = None) -> Non
             f"{label} &nbsp; `{value:.3f}`", unsafe_allow_html=True
         )
         st.progress(min(max(value, 0.0), 1.0))
+
+
+def tutor_response(values: dict) -> None:
+    """What the tutor says to the STUDENT about their last attempt.
+
+    Everything rendered here was already being computed -- the grade, the diagnosed
+    misconception, the reason for a detour -- and was previously visible only in the
+    event stream, which is written for us rather than for the person being taught. A
+    tutor that works out why you are stuck and then does not tell you has not taught
+    anybody anything.
+    """
+    grade = values.get("grader_result") or {}
+    if not grade:
+        return
+
+    raw = str(values.get("error_type") or "")
+    try:
+        StudentOutcome(raw)
+        student_evidence = True
+    except ValueError:
+        student_evidence = False
+
+    if not student_evidence:
+        # Our failure, not theirs. Say so plainly, and say what it did NOT cost them.
+        st.info(
+            "⚙️ **Code execution was temporarily unavailable.** Your submission and your "
+            "progress have been preserved, and nothing was counted against you."
+        )
+        return
+
+    if grade.get("passed"):
+        st.success("✅ **Correct.**" + (
+            f"  Passed every test case (score {grade['score']:.0%})."
+            if grade.get("score") else ""
+        ))
+        return
+
+    feedback = (grade.get("feedback") or "").strip()
+    st.warning("**Not quite — but the mistake is a useful one.**")
+    if feedback:
+        st.markdown(f"> {feedback}")
+    if grade.get("failing_case"):
+        st.caption(f"First failing case: `{grade['failing_case']}`")
+
+
+def redirect_explainer(values: dict) -> None:
+    """Tell the student WHY they are suddenly being taught something else.
+
+    Without this the prerequisite redirect -- the entire point of the product -- reads
+    from the student's side as the tutor changing the subject for no reason.
+    """
+    stack = values.get("prereq_return_stack") or []
+    if not stack:
+        return
+    original, current = stack[0], values.get("target_skill")
+    implicated = None
+    for entry in reversed(values.get("detected_misconceptions") or []):
+        if entry.get("implicates"):
+            implicated = entry["implicates"]
+            break
+
+    because = (
+        f" Your mistakes on **{original}** point at **{implicated}** rather than at "
+        f"{original} itself."
+        if implicated else ""
+    )
+    st.info(
+        f"↩️ **Let's back up for a moment.**{because} We're going to work on "
+        f"**{current}** first, then go straight back to **{original}** — that is still "
+        "what you came here for, and it has not been forgotten."
+    )
 
 
 def path_banner(path: list[str]) -> None:
@@ -292,6 +364,11 @@ else:
         with left:
             if pending:
                 problem = values.get("current_problem") or {}
+                # The tutor speaks before it sets the next task, in that order, because
+                # that is the order a person needs them in: what happened to my last
+                # answer, why are we moving, then what am I doing now.
+                tutor_response(values)
+                redirect_explainer(values)
                 st.info(
                     f"⏸ **Graph suspended at `{pending[0]}`** — checkpointed to disk, "
                     "waiting for you."

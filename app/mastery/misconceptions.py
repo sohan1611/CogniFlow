@@ -30,6 +30,19 @@ class Pattern:
     being practised -- a `NoneType` arithmetic error during recursion is a `return`
     misunderstanding, i.e. a functions problem wearing a recursion costume."""
 
+    student_note: str = ""
+    """The same diagnosis, addressed to the student instead of to a reviewer.
+
+    `label` is written for the event stream: third person, diagnostic, and it names the
+    fault outright. That is the wrong register for the person who just failed. This ends
+    in a question the student can answer from what they already know, because handing
+    someone the fix teaches them that they needed handing the fix.
+
+    Deterministic on purpose. The rule already knows exactly which misunderstanding
+    fired, so asking a model to re-describe it would add latency and a failure mode to
+    a sentence we can simply write correctly once.
+    """
+
     stderr_patterns: tuple[str, ...] = ()
     stdout_patterns: tuple[str, ...] = ()
     code_patterns: tuple[str, ...] = ()
@@ -41,12 +54,22 @@ PATTERNS: tuple[Pattern, ...] = (
         key="missing_base_case",
         label="recursive function has no reachable base case, so it never terminates",
         prerequisite_hint="conditionals",
+        student_note=(
+            "Your recursive call looks right, but nothing ever stops it — the function calls "
+            "itself all the way down. What is the smallest input where it should return "
+            "immediately, without calling itself again?"
+        ),
         stderr_patterns=(r"RecursionError", r"maximum recursion depth"),
     ),
     Pattern(
         key="unreturned_recursive_call",
         label="recursive call is computed but not returned, so the function yields None",
         prerequisite_hint="functions",
+        student_note=(
+            "You are computing the recursive call but not returning it, so the function hands "
+            "back None and the arithmetic fails. Look at the line that calls itself: what happens "
+            "to the value it produces?"
+        ),
         stderr_patterns=(
             r"unsupported operand type\(s\).*NoneType",
             r"TypeError.*NoneType.*int",
@@ -57,6 +80,11 @@ PATTERNS: tuple[Pattern, ...] = (
         key="print_instead_of_return",
         label="uses print where a return value is required, so the caller receives None",
         prerequisite_hint="functions",
+        student_note=(
+            "Your function prints the answer instead of returning it, so the caller receives "
+            "None. Printing shows a value to a human; returning gives it back to the code. Which "
+            "one does the caller need here?"
+        ),
         code_patterns=(r"def\s+\w+\([^)]*\):(?:(?!return).)*?print\(",),
         outcomes=(StudentOutcome.WRONG_ANSWER,),
     ),
@@ -64,24 +92,42 @@ PATTERNS: tuple[Pattern, ...] = (
         key="infinite_loop",
         label="loop condition never becomes false, so execution does not terminate",
         prerequisite_hint="loops",
+        student_note=(
+            "Your loop never finishes, so the program was stopped for you. Look at the variable "
+            "in the loop condition: is anything inside the loop actually changing it?"
+        ),
         outcomes=(StudentOutcome.STUDENT_TIMEOUT,),
     ),
     Pattern(
         key="off_by_one_recursion",
         label="recursive step does not reduce the problem, so the base case is unreachable",
         prerequisite_hint="recursion",
+        student_note=(
+            "Each recursive call is being given the same problem rather than a smaller one, so "
+            "the base case is never reached. Compare the argument you pass to the one you "
+            "received: is it getting closer to the stopping point?"
+        ),
         code_patterns=(r"def\s+(\w+)\([^)]*\):(?:(?!\1\s*\(\s*\w+\s*[-+]).)*?\1\s*\(\s*\w+\s*\)",),
     ),
     Pattern(
         key="name_error",
         label="uses a name that was never defined, or defined only inside another scope",
         prerequisite_hint="variables",
+        student_note=(
+            "You are using a name Python has not seen yet at that point — either it was never "
+            "defined, or it was defined inside another function and is not visible here. Where is "
+            "that name first assigned?"
+        ),
         stderr_patterns=(r"NameError",),
     ),
     Pattern(
         key="indentation",
         label="block structure is wrong, so statements sit outside the body they belong to",
         prerequisite_hint=None,
+        student_note=(
+            "The indentation puts some statements outside the block you meant them to be in, so "
+            "they run at the wrong time. Which lines are meant to belong to the body above them?"
+        ),
         stderr_patterns=(r"IndentationError", r"TabError"),
     ),
 )

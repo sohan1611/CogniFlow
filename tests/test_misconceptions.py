@@ -170,3 +170,57 @@ def test_hint_only_redirects_to_a_genuine_unmastered_prerequisite() -> None:
     # a hint naming a MASTERED prerequisite is ignored
     assert run("variables").target_skill == "conditionals"
     assert run(None).action is AdaptationAction.REVISIT_PREREQUISITE
+
+
+# ---------------------------------------------------------------- student-facing text
+def test_every_pattern_speaks_to_the_student() -> None:
+    """A diagnosis the student never sees has taught nobody anything.
+
+    `label` is written for the event stream and names the fault outright. `student_note`
+    is the same finding addressed to the person who just failed, and it has to end in a
+    question -- handing someone the fix teaches them that they needed handing the fix.
+    """
+    for pattern in PATTERNS:
+        assert pattern.student_note, f"{pattern.key} has no student-facing note"
+        assert pattern.student_note.rstrip().endswith("?"), (
+            f"{pattern.key} tells the student the answer instead of asking for it"
+        )
+        assert pattern.student_note != pattern.label, (
+            f"{pattern.key} shows the reviewer's wording to the student"
+        )
+
+
+def test_feedback_reaching_the_student_is_the_diagnosis_not_the_traceback() -> None:
+    """Regression: `feedback` used to carry raw stderr, which explains nothing.
+
+    Pins the whole path -- a recursion failure with no base case must reach the student
+    as the diagnosed cause, not as the exception Python happened to raise.
+    """
+    found = detect(
+        code="def total(n):\n    return n + total(n - 1)",
+        stdout="",
+        stderr="RecursionError: maximum recursion depth exceeded",
+        outcome=StudentOutcome.STUDENT_RUNTIME_ERROR,
+    )
+    assert found is not None and found.key == "missing_base_case"
+    note = found.student_note
+    assert "RecursionError" not in note, "the traceback leaked into student feedback"
+    assert "base case" not in note.lower(), "jargon the student has not been taught yet"
+    assert "stop" in note.lower() or "smallest" in note.lower()
+
+
+def test_error_summary_drops_our_stack_frames() -> None:
+    """A student should read their own mistake, not our sandbox harness."""
+    from app.graph.nodes import _error_summary
+
+    traceback = (
+        "Traceback (most recent call last):\n"
+        '  File "/tmp/sandbox_runner.py", line 42, in <module>\n'
+        "    exec(compile(src))\n"
+        '  File "<student>", line 2, in total\n'
+        "NameError: name 'tota' is not defined"
+    )
+    summary = _error_summary(traceback)
+    assert summary == "NameError: name 'tota' is not defined"
+    assert "sandbox_runner" not in summary
+    assert _error_summary("") == ""
