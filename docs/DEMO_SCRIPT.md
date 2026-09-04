@@ -1,6 +1,12 @@
 # CogniFlow — 3–5 minute demo video script
 
-**Two speakers.** A narrates architecture, B drives the machine. Total target: **4:30**.
+**One narrator**, who also drives the terminal. Total target: **4:30**.
+
+> This file is the submission's record of the demo. The two documents actually used
+> to record it are [CogniFlow_Video_Guide.pdf](CogniFlow_Video_Guide.pdf) — the
+> concepts, and which beat to speak when — and
+> [CogniFlow_Video_Script.pdf](CogniFlow_Video_Script.pdf), which holds the same
+> words below split into self-contained PARTs. Each beat here maps to one PART.
 
 > **Golden rule:** never say a thing the screen is not showing. Judges have seen a lot of
 > narrated slideware. Everything below is on-screen output from a real run.
@@ -58,7 +64,7 @@ Terminal at ~110 columns, large font. Close everything else.
 
 ---
 
-## 0:00 – 0:25 · The problem (A, on the seeded state)
+## 0:00 – 0:25 · The problem — on the seeded state  ·  *PART 1*
 
 > "A student fails a recursion exercise. Twice. Every AI tutor does the same thing here:
 > it generates an easier recursion problem.
@@ -73,7 +79,7 @@ Terminal at ~110 columns, large font. Close everything else.
 
 ---
 
-## 0:25 – 0:45 · What is and isn't scripted (A)
+## 0:25 – 0:45 · What is and isn't scripted  ·  *PART 2*
 
 > "One thing before we run it. The *student* is scripted — what they submit, and when.
 > **Nothing the tutor does is scripted.** Every decision you're about to see is computed
@@ -86,7 +92,7 @@ waiting for it in Q&A.
 
 ---
 
-## 0:45 – 1:30 · Attempt 1 (B runs `python run.py demo`)
+## 0:45 – 1:30 · Attempt 1 — run `python run.py live`  ·  *PART 3*
 
 **Screen:** the live event stream. Pause on these lines:
 
@@ -98,13 +104,13 @@ waiting for it in Q&A.
 [adapt]     action=RETRY_VARIATION
 ```
 
-> B: "Real diagnosis, real retrieval with citations back to the source page, real code
+> "Real diagnosis, real retrieval with citations back to the source page, real code
 > execution in a sandbox. The student's code raised — mastery drops, and the agent
 > retries a variation. So far, a normal tutor."
 
 ---
 
-## 1:30 – 2:15 · **THE MOMENT** — attempt 2 (A narrates over the screen)
+## 1:30 – 2:15 · **THE MOMENT** — attempt 2  ·  *PART 4*
 
 ```
 [mastery]          recursion  0.204 -> 0.176
@@ -117,7 +123,7 @@ waiting for it in Q&A.
 [retrieve]         skill=functions  evidence: 03_functions.md#3.4 The call stack
 ```
 
-> A: "**There.** Second failure. The agent did *not* generate an easier recursion
+> "**There.** Second failure. The agent did *not* generate an easier recursion
 > problem. It walked the prerequisite graph, found `functions` was the weakest unmastered
 > dependency, and **reassigned its own objective**.
 >
@@ -129,11 +135,32 @@ waiting for it in Q&A.
 > already failed. And retrieval followed it: it's pulling *The call stack* from the
 > functions chapter."
 
-**Slow down here.** This is the whole project. Give it room.
+**Slow down here.** This is the whole project. Give it room — a two-second silence
+after "reassigned its own objective" is right, not awkward. Narrating alone, the
+temptation is to keep talking through it; resist that.
+
+### Optional, inside this beat · *PART 4b* — the guard overruling the model
+
+Only if a `guard_override` line actually appeared. It usually does on a live run and
+never on an offline one, so check the screen before saying it:
+
+```
+[guard_override]  proposed=REVISIT_PREREQUISITE  final=RETRY_VARIATION
+   violated=['premature_redirect_without_evidence']
+```
+
+> "And here the model proposed jumping to the prerequisite after a single failure. The
+> guard rejected it — one failure isn't enough evidence — and forced a retry instead.
+>
+> That's the architecture in one line: the model proposes, deterministic code disposes.
+> The model can't corrupt a learning path, and every override is logged."
+
+This is live proof of the guard, which is otherwise only a claim. Worth ten seconds when
+it appears — and do not invent it when it doesn't.
 
 ---
 
-## 2:15 – 2:45 · The infrastructure failure (B)
+## 2:15 – 2:45 · The infrastructure failure  ·  *PART 5*
 
 ```
 [execute]   status=sandbox_error  started=False  outcome=SANDBOX_FAILURE
@@ -141,7 +168,7 @@ waiting for it in Q&A.
    reason: infrastructure fault; student model deliberately left unchanged
 ```
 
-> B: "We inject a sandbox failure mid-session. Watch the mastery number — **it doesn't
+> "We inject a sandbox failure mid-session. Watch the mastery number — **it doesn't
 > move.**
 >
 > `StudentOutcome` and `SystemFault` are disjoint types, and mastery is reachable only
@@ -150,7 +177,7 @@ waiting for it in Q&A.
 
 ---
 
-## 2:45 – 3:15 · The return (A)
+## 2:45 – 3:15 · The return  ·  *PART 6*
 
 ```
 [mastery]        functions  0.550 -> 0.869
@@ -160,14 +187,14 @@ waiting for it in Q&A.
 [mastery]        recursion  0.176 -> 0.567 -> 0.877
 ```
 
-> A: "Functions is mastered. The agent pops its return stack and goes back to what the
+> "Functions is mastered. The agent pops its return stack and goes back to what the
 > student originally came for. Recursion: **0.35 to 0.88.**"
 
 **Screen:** `Learning path : recursion -> functions -> recursion`
 
 ---
 
-## 3:15 – 3:45 · It checks its own claims (B)
+## 3:15 – 3:45 · It checks its own claims  ·  *PART 7*
 
 ```
 [PASS] visited recursion -> functions -> recursion
@@ -178,13 +205,13 @@ waiting for it in Q&A.
 [PASS] student ended ahead on recursion
 ```
 
-> B: "The demo verifies itself. And the same code path is asserted in CI against the
+> "The demo verifies itself. And the same code path is asserted in CI against the
 > event stream and the database — not against printed text. A hardcoded narration
 > couldn't pass those tests."
 
 ---
 
-## 3:45 – 4:20 · Does it actually help? (A runs `python run.py ablation`)
+## 3:45 – 4:20 · Does it actually help? — run `python run.py ablation`  ·  *PART 8*
 
 ```
 arm                  mastered   med steps  gap found   false rdr
@@ -192,7 +219,7 @@ A_no_prerequisite      100.0%          16       0.0%        0.0%
 B_rules                100.0%          13      57.5%        7.5%
 ```
 
-> A: "Eighty simulated students, prerequisite gaps *planted* so detection is scored
+> "Eighty simulated students, prerequisite gaps *planted* so detection is scored
 > exactly. Prerequisite-aware adaptation reaches mastery in **19% fewer attempts** and
 > finds the gap **57%** of the time. The arm without a skill graph finds it **0%** — it
 > can't, by construction.
@@ -203,7 +230,7 @@ B_rules                100.0%          13      57.5%        7.5%
 
 ---
 
-## 4:20 – 4:30 · Close (A)
+## 4:20 – 4:30 · Close  ·  *PART 9*
 
 > "Three of eleven nodes call a model. Diagnosis, routing, and mastery are deterministic
 > and unit-tested, because arithmetic is already correct and free.
@@ -212,7 +239,7 @@ B_rules                100.0%          13      57.5%        7.5%
 
 ---
 
-## Optional 20s add-on — the live interrupt
+## Optional 20s add-on — the live interrupt  ·  *PART 10*
 
 If you have room, `python run.py ui` → **Be the student** → Start session:
 
