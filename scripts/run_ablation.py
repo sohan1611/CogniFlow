@@ -37,6 +37,9 @@ def main() -> int:
     print("Half carry a PLANTED prerequisite gap; half are weak at the target with")
     print("prerequisites intact. The control half is what separates diagnosis from a")
     print("reflex -- a policy that always redirects would score well without it.")
+    print()
+    print("This measures the POLICY, not the model: no LLM is called in any arm. The")
+    print("comparison that carries the result is A against B.")
 
     summaries = run_ablation(n=args.n)
     print(render(summaries))
@@ -58,10 +61,15 @@ def main() -> int:
     print(f"  * HONEST COST: it also redirected {b.false_redirect_rate*100:.0f}% of students "
           "who had no gap. Diagnosis is not free.")
     print()
-    print("  Arm C matches Arm B exactly here because no LLM provider is configured, so")
-    print("  the guarded arm falls back to the deterministic policy. With a key present")
-    print("  the guard-override rate becomes the interesting number. Reported rather")
-    print("  than hidden.")
+    print("  Arm C is IDENTICAL to Arm B by construction, not by accident: this harness")
+    print("  scores the POLICY, and both arms run the same deterministic policy. No")
+    print("  model is called here at all, with or without an API key. C is reported as a")
+    print("  separate row only to make that explicit rather than to imply a third result.")
+    print()
+    print("  The guard's effect on a model's proposals is real but is measured elsewhere,")
+    print("  in a live session, where guard_override events are logged as they happen --")
+    print("  see the event stream in `python run.py live`. It is not measured here, and")
+    print("  this table should not be read as evidence about it.")
 
     payload = {
         arm.value: {

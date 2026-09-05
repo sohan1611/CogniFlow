@@ -281,6 +281,7 @@ Strong for the finale, where a judge can type the answer themselves.
 | "Is mastery just a counter?" | Bayesian Knowledge Tracing, Corbett & Anderson 1995. Models slip and guess; yields a confidence signal the policy consumes. |
 | "Did you train anything?" | We built BKT parameter fitting. It produced a **negative** result on held-out data, so we ship literature defaults and report it. Same with a retrieval reranker: recall@4 was already 100%, so we measured it and didn't build it. |
 | "Is the sandbox real?" | Separate process, timeout, minimal env — student code can't read our API keys, verified with a canary. `capability()` honestly reports what Windows subprocess *doesn't* isolate. Docker backend adds network and memory isolation. |
+| "Why are arms B and C identical?" | Because the ablation scores the **policy**, and no LLM is called in any arm. `eval/ablation.py` branches on `Arm.NO_PREREQ` only. C is shown to make that explicit; the finding is A vs B. The guard's effect on model proposals is logged live as `guard_override`, not measured here. |
 | "What breaks it?" | 7.5% false-redirect rate — a student with no gap still gets an unnecessary detour. It was 25%; requiring evidence cut it. Both numbers are in the results table. |
 
 **If something fails live:** say so plainly, run `python run.py verify`, and keep going. The event

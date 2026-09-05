@@ -95,6 +95,22 @@ B_rules                100.0%          13      57.5%        7.5%     0.130
 C_guarded_model        100.0%          13      57.5%        7.5%     0.130
 ```
 
+> **Why B and C are identical, stated plainly.** This harness scores the *policy*, and
+> **no LLM is called in any arm** — with or without an API key. `eval/ablation.py` branches
+> on `Arm.NO_PREREQ` and nothing else, so B and C run the same deterministic `decide()`.
+> C is kept as a visible row to make that explicit rather than to imply a third result,
+> and **the comparison carrying the finding is A against B.**
+>
+> The guard's effect on a model's proposals is real, but it is observed in a *live*
+> session, where `guard_override` events are logged as they occur — it appeared in all
+> three live runs on 5 Sep. It is not measured here, and this table is not evidence
+> about it.
+>
+> An earlier version of this document and of the script's own output said C matched B
+> "because no LLM provider is configured", implying it would differ once a key was
+> present. That was wrong: two providers were configured when this was checked and the
+> row was still identical, because the code path never consults a model.
+
 | | before | after |
 |---|---|---|
 | False redirect | 25.0% | **7.5%** (3.3× lower) |
