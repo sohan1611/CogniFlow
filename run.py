@@ -32,8 +32,21 @@ def sh(*args: str) -> int:
 def install() -> int:
     """create the venv and install pinned dependencies"""
     if not VENV_PY.exists():
-        launcher = ["py", "-3.14"] if sys.platform == "win32" else [sys.executable]
-        if sh(*launcher, "-m", "venv", ".venv"):
+        # Prefer 3.14 -- it is what the pinned set was resolved against -- but do not
+        # HARD-REQUIRE it. `py -3.14` fails outright on a machine that has 3.12 or 3.13,
+        # which is most machines, and a collaborator or judge cloning this repository
+        # then cannot get past the first command. Falling back to whatever Python is
+        # present is worth far more than pinning a minor version we never depended on.
+        launchers = (
+            [["py", "-3.14"], ["py", "-3"], [sys.executable]]
+            if sys.platform == "win32"
+            else [[sys.executable]]
+        )
+        for launcher in launchers:
+            if sh(*launcher, "-m", "venv", ".venv") == 0:
+                break
+        else:
+            print("could not create a virtualenv with any available Python.")
             return 1
     # Re-resolve rather than reusing PY. On a fresh clone `.venv` did not exist when
     # this module was imported, so PY is the system interpreter -- and installing with
