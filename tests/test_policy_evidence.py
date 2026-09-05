@@ -21,7 +21,7 @@ from app.mastery.policy import (
     decide,
 )
 from app.mastery.skill_graph import SkillGraph
-from app.models.enums import AdaptationAction, Difficulty, StudentOutcome
+from app.models.enums import AdaptationAction, Difficulty, StudentOutcome, TeachingMode
 from app.models.schemas import AdaptationDecision, SkillNode
 
 
@@ -166,3 +166,59 @@ def test_guard_allows_a_well_evidenced_redirect() -> None:
     )
     verdict = validate(proposal, _ctx(graph))
     assert verdict.overridden is False
+
+
+# ------------------------------------------------- explaining differently, differently
+def test_explain_differently_never_repeats_the_mode_that_just_failed() -> None:
+    """"Explain differently" that picks the same mode again has explained nothing.
+
+    Before this, EXPLAIN_DIFFERENTLY always chose WORKED_EXAMPLE -- so a student who
+    failed a worked example was handed another worked example and told it was a new
+    approach.
+    """
+    from app.mastery.policy import EXPLANATION_MODES, _next_explanation_mode
+
+    for mode in EXPLANATION_MODES:
+        assert _next_explanation_mode(mode) is not mode
+
+    # An unlisted mode (TEXTUAL, the default) enters the rotation at the start.
+    assert _next_explanation_mode(TeachingMode.TEXTUAL) is EXPLANATION_MODES[0]
+
+
+def test_explanation_rotation_visits_every_mode_before_repeating() -> None:
+    """Every teaching mode is reachable, which is why they are in the enum."""
+    from app.mastery.policy import EXPLANATION_MODES, _next_explanation_mode
+
+    seen, mode = [], TeachingMode.TEXTUAL
+    for _ in range(len(EXPLANATION_MODES)):
+        mode = _next_explanation_mode(mode)
+        seen.append(mode)
+    assert set(seen) == set(EXPLANATION_MODES), "a declared mode is unreachable"
+    assert len(seen) == len(set(seen)), "the rotation repeats before exhausting the modes"
+
+
+def test_every_teaching_mode_maps_to_a_gradeable_assessment() -> None:
+    """A mode with no assessment mapping would silently fall back to CODING.
+
+    That is how an enum value ends up looking implemented while changing nothing.
+    """
+    from app.graph.nodes import ASSESSMENT_FOR_MODE
+
+    for mode in TeachingMode:
+        assert mode in ASSESSMENT_FOR_MODE, f"{mode} has no assessment mapping"
+
+
+def test_debugging_tasks_carry_broken_code_to_fix() -> None:
+    """A DEBUGGING task with no starter_code is just a coding task with a odd prompt."""
+    from app.graph.nodes import _template_problem
+    from app.models.enums import AssessmentType
+    problem = _template_problem({
+        "target_skill": "functions",
+        "difficulty_level": "EASY",
+        "teaching_mode": TeachingMode.WORKED_EXAMPLE,
+        "assessment_type": AssessmentType.DEBUGGING,
+    })
+    assert problem.assessment_type is AssessmentType.DEBUGGING
+    assert problem.starter_code.strip(), "nothing for the student to debug"
+    assert problem.expected_output, "the grader cannot score a fix with no expectation"
+    assert "print(a + b)" in problem.starter_code, "the planted bug is missing"

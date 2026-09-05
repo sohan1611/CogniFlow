@@ -26,11 +26,20 @@ class TeachingMode(StrEnum):
 
 
 class AssessmentType(StrEnum):
-    """Assessment shapes that can be selected without model calls."""
+    """Assessment shapes that can be selected without model calls.
+
+    Every member is graded by EXECUTION: the student submits a program, it runs in the
+    sandbox, and the output is compared. That is what makes grading deterministic and
+    free.
+
+    MCQ and SHORT_ANSWER were declared here and never implemented, because both need a
+    rubric grader for free text that this system does not have -- and adding one would
+    put a model in the grading path, which is exactly where we have refused to put one.
+    They are removed rather than left in the enum: a listed capability that no code path
+    can reach is a claim, and this project does not make claims it cannot demonstrate.
+    """
 
     CODING = "CODING"
-    MCQ = "MCQ"
-    SHORT_ANSWER = "SHORT_ANSWER"
     CODE_TRACE = "CODE_TRACE"
     DEBUGGING = "DEBUGGING"
 

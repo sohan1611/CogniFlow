@@ -55,6 +55,13 @@ class PolicyContext:
     prereq_depth: int
     prereq_return_stack: list[str]
     current_difficulty: Difficulty = Difficulty.MEDIUM
+    teaching_mode: TeachingMode = TeachingMode.TEXTUAL
+    """How the current skill is being taught right now.
+
+    EXPLAIN_DIFFERENTLY needs this to mean anything: without knowing what was already
+    tried, "explain differently" can only pick the same mode again and call it a change.
+    """
+
     misconception_hint: str | None = None
     """A skill implicated by the student's actual mistake, if one was diagnosed.
 
@@ -237,13 +244,20 @@ def decide(ctx: PolicyContext) -> AdaptationDecision:
                 confidence=confidence,
             )
         if ctx.current_difficulty == Difficulty.EASY:
+            mode = _next_explanation_mode(ctx.teaching_mode)
             return AdaptationDecision(
                 action=AdaptationAction.EXPLAIN_DIFFERENTLY,
                 target_skill=ctx.target_skill,
-                teaching_mode=TeachingMode.WORKED_EXAMPLE,
+                teaching_mode=mode,
                 difficulty=Difficulty.EASY,
-                reason="repeated failures remain at easiest difficulty",
-                evidence=evidence + [f"consecutive_failures={ctx.consecutive_failures}"],
+                reason=(
+                    f"repeated failures at the easiest difficulty; explaining via "
+                    f"{mode.value} instead of {ctx.teaching_mode.value}"
+                ),
+                evidence=evidence + [
+                    f"consecutive_failures={ctx.consecutive_failures}",
+                    f"previous_mode={ctx.teaching_mode.value}",
+                ],
                 confidence=confidence,
             )
         return AdaptationDecision(
@@ -262,6 +276,32 @@ def decide(ctx: PolicyContext) -> AdaptationDecision:
         evidence=evidence + ["fallback=reassess"],
         confidence=confidence,
     )
+
+
+# The order an explanation is retried in, weakest change first. Each is a different way
+# of showing the SAME idea, not a different idea: a worked example before an analogy
+# before a picture, because a student who has just failed twice needs the concrete
+# before the figurative.
+EXPLANATION_MODES: tuple[TeachingMode, ...] = (
+    TeachingMode.WORKED_EXAMPLE,
+    TeachingMode.CODE_TRACE,
+    TeachingMode.ANALOGY,
+    TeachingMode.VISUAL_DESCRIPTION,
+    TeachingMode.SOCRATIC_HINTS,
+)
+
+
+def _next_explanation_mode(current: TeachingMode) -> TeachingMode:
+    """The next way to explain something, given what has already been tried.
+
+    Deterministic and cyclic. Repeating the approach that just failed is the specific
+    thing EXPLAIN_DIFFERENTLY exists to avoid, so the mode always moves; a mode outside
+    the rotation (TEXTUAL, the default) enters it at the start.
+    """
+    if current not in EXPLANATION_MODES:
+        return EXPLANATION_MODES[0]
+    index = EXPLANATION_MODES.index(current)
+    return EXPLANATION_MODES[(index + 1) % len(EXPLANATION_MODES)]
 
 
 def _tripped_limits(ctx: PolicyContext) -> list[str]:

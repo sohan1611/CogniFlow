@@ -84,6 +84,26 @@ def _difficulty_for(mastery: float) -> Difficulty:
 
 
 # ---------------------------------------------------------------- nodes
+# How the student is taught decides how they are asked to show it. Deterministic on
+# purpose: the shape of an assessment is a pedagogical choice, and an LLM would add
+# nondeterminism to a mapping that is a lookup.
+#
+# Every value here is graded by EXECUTION. Assessment types that would need a rubric
+# grader for free text are deliberately absent rather than declared and unreachable --
+# see the note on AssessmentType.
+ASSESSMENT_FOR_MODE: dict[TeachingMode, AssessmentType] = {
+    TeachingMode.CODE_TRACE: AssessmentType.CODE_TRACE,
+    # Shown a worked example, then handed a broken one: fixing it is the proof that the
+    # example landed, and it is a harder test of the same understanding than writing
+    # fresh code, where a student can route around what they do not know.
+    TeachingMode.WORKED_EXAMPLE: AssessmentType.DEBUGGING,
+    TeachingMode.ANALOGY: AssessmentType.CODING,
+    TeachingMode.VISUAL_DESCRIPTION: AssessmentType.CODE_TRACE,
+    TeachingMode.SOCRATIC_HINTS: AssessmentType.CODING,
+    TeachingMode.TEXTUAL: AssessmentType.CODING,
+}
+
+
 def _error_summary(stderr: str) -> str:
     """The exception line from a traceback, without the frames above it.
 
@@ -189,11 +209,7 @@ def make_plan_action(deps: GraphDeps) -> Node:
         mastery = graph.nodes[target].mastery
         difficulty = _difficulty_for(mastery)
         mode = state.get("teaching_mode") or TeachingMode.TEXTUAL
-        assessment = (
-            AssessmentType.CODE_TRACE
-            if mode == TeachingMode.CODE_TRACE
-            else AssessmentType.CODING
-        )
+        assessment = ASSESSMENT_FOR_MODE.get(mode, AssessmentType.CODING)
         deps.events.emit(
             "plan_action",
             EventType.PLAN,
@@ -258,7 +274,24 @@ def _template_problem(state: AgentState) -> GeneratedProblem:
     skill = state["target_skill"] or "python"
     difficulty = state.get("difficulty_level", Difficulty.MEDIUM)
     mode = state.get("teaching_mode", TeachingMode.TEXTUAL)
-    if mode == TeachingMode.CODE_TRACE:
+    assessment = state.get("assessment_type", AssessmentType.CODING)
+    starter = ""
+    if assessment == AssessmentType.DEBUGGING:
+        # The classic return-vs-print confusion, which is what a recursion failure
+        # usually turns out to be. They must fix it and make it print 6.
+        prompt = (
+            "This program is meant to print 6, but it fails. Find the bug, fix it, and "
+            "submit the corrected program."
+        )
+        starter = (
+            "def add(a, b):\n"
+            "    print(a + b)\n"
+            "\n"
+            "total = add(2, 3)\n"
+            "print(total + 1)"
+        )
+        expected = "6"
+    elif mode == TeachingMode.CODE_TRACE:
         prompt = (
             f"Trace this {skill} example by hand and print the final result.\n\n"
             "def add(a, b):\n    return a + b\n\n"
@@ -277,9 +310,38 @@ def _template_problem(state: AgentState) -> GeneratedProblem:
         prompt=prompt,
         skill=skill,
         difficulty=difficulty,
-        assessment_type=state.get("assessment_type", AssessmentType.CODING),
+        assessment_type=assessment,
+        starter_code=starter,
         expected_output=expected,
         test_cases=[{"name": "default", "stdin": "", "expected_output": expected}] if expected else [],
+    )
+
+
+def _assessment_instruction(assessment: str | AssessmentType) -> str:
+    """What this assessment shape requires of the generated problem.
+
+    Kept out of the base prompt because each shape has a different, specific contract
+    with the grader, and a generic instruction produces a task the grader cannot score.
+    DEBUGGING in particular is worthless without starter_code: with no broken program to
+    fix, the student is just being asked to write one from scratch.
+    """
+    if str(assessment) == AssessmentType.DEBUGGING:
+        return (
+            "This is a DEBUGGING task. Put a SHORT, genuinely broken program in "
+            "starter_code -- one clear bug, of a kind that reveals a misunderstanding "
+            "rather than a typo. The prompt must say what the program is supposed to "
+            "print. expected_output must be what the FIXED program prints. Do not "
+            "reveal the bug or the fix in the prompt."
+        )
+    if str(assessment) == AssessmentType.CODE_TRACE:
+        return (
+            "This is a CODE_TRACE task. Put the program to trace in the prompt, and set "
+            "expected_output to what it prints. The student works it out by hand, so it "
+            "must be short enough to follow without running it."
+        )
+    return (
+        "This is a CODING task. The student writes the program from scratch, so "
+        "starter_code should be empty."
     )
 
 
@@ -304,9 +366,13 @@ def make_generate_problem(deps: GraphDeps) -> Node:
                 "content": (
                     f"Skill: {skill}\nDifficulty: {state.get('difficulty_level')}\n"
                     f"Teaching mode: {state.get('teaching_mode')}\n"
+                    f"Assessment type: {state.get('assessment_type')}\n"
                     f"Curriculum material:\n{context or '(none available)'}\n\n"
                     "Write one exercise. If it is a coding task, give an expected_output "
-                    "that a correct solution would print."
+                    "that a correct solution would print.\n"
+                    + _assessment_instruction(
+                        state.get("assessment_type", AssessmentType.CODING)
+                    )
                 ),
             },
         ]
@@ -704,6 +770,7 @@ def make_adapt(deps: GraphDeps) -> Node:
             prereq_depth=state.get("prereq_depth", 0),
             prereq_return_stack=list(state.get("prereq_return_stack", [])),
             current_difficulty=Difficulty(state.get("difficulty_level", Difficulty.MEDIUM)),
+            teaching_mode=TeachingMode(state.get("teaching_mode", TeachingMode.TEXTUAL)),
             misconception_hint=_latest_hint(state, skill),
         )
 
