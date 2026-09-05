@@ -53,12 +53,12 @@ def main() -> int:
         print(f"  * Prerequisite-aware adaptation reached true mastery in "
               f"{b.median_steps:.0f} median attempts vs {a.median_steps:.0f} "
               f"({delta:.0f}% fewer).")
-    print(f"  * It identified the planted gap in {b.gap_detection_rate*100:.0f}% of gapped "
-          f"students. The no-prerequisite arm found it in {a.gap_detection_rate*100:.0f}% -- "
+    print(f"  * It identified the planted gap in {b.gap_detection_rate*100:.1f}% of gapped "
+          f"students. The no-prerequisite arm found it in {a.gap_detection_rate*100:.1f}% -- "
           "it cannot, by construction.")
     print(f"  * Its mastery estimates were roughly {a.mean_estimate_error/max(b.mean_estimate_error,1e-9):.1f}x "
           "closer to the students' true skill.")
-    print(f"  * HONEST COST: it also redirected {b.false_redirect_rate*100:.0f}% of students "
+    print(f"  * HONEST COST: it also redirected {b.false_redirect_rate*100:.1f}% of students "
           "who had no gap. Diagnosis is not free.")
     print()
     print("  Arm C is IDENTICAL to Arm B by construction, not by accident: this harness")
