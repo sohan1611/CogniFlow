@@ -55,10 +55,29 @@ prohibits fabricated *results* rather than templated prose, a judge who sees
 `degraded=True` will reasonably ask what else was not real. Do not hand them that
 question when the live path works.
 
-Run `python run.py live` **three times** and confirm the path is identical each time. If it
-varies, stop and fix that before recording — a demo you cannot reproduce is a demo that
-will fail in front of judges. The path is deterministic by construction, so variation
-means something is wrong, not that the model had an off day.
+Run `python run.py live` **three times.** Two things must be identical every time, and
+they are the two the demo actually claims:
+
+| Must be identical | Check |
+|---|---|
+| The learning path | `Learning path : recursion -> functions -> recursion` |
+| The self-verification | all **7** `[PASS]` lines, no `[FAIL]` |
+
+**Some things will legitimately differ between runs, and that is not a fault.** Measured
+across three consecutive live runs on 5 Sep:
+
+- **Problem titles** — the model authors a new exercise each run.
+- **The number of intermediate steps.** The scripted student submits *fixed* code, and a
+  live model phrases the exercise differently each time, so a canned answer that
+  satisfies one phrasing may not satisfy the next. One run graded a functions answer
+  `WRONG_ANSWER` and the agent responded `EXPLAIN_DIFFERENTLY` and stepped the difficulty
+  down — an extra loop, and arguably a *better* demo than the shorter runs.
+- **Which provider served each call** — Groq until its per-minute ceiling, then Google.
+- **Duration** — 42s to 65s observed.
+
+That variation is the *student* being scripted while the *tutor* is not, which is exactly
+the claim being made. **Stop and investigate only if the learning path changes or any
+check reports `[FAIL]`.**
 
 Terminal at ~110 columns, large font. Close everything else.
 
