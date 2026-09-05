@@ -89,3 +89,60 @@ def test_to_dict_from_dict_round_trips() -> None:
     graph = SkillGraph.from_yaml(Path("app/config/skills.yaml"))
     serialized = graph.to_dict()
     assert SkillGraph.from_dict(serialized).to_dict() == serialized
+
+
+# ------------------------------------------------------------------ next_skills
+def test_next_skills_only_returns_what_is_genuinely_unlocked() -> None:
+    """A recommendation the student cannot start is worse than none.
+
+    A dependent counts only when EVERY prerequisite of it is mastered. Otherwise
+    "study this next" just moves them to a different wall.
+    """
+    graph = SkillGraph({
+        "variables": SkillNode(skill="variables", mastery=0.9, confidence=0.9),
+        "functions": SkillNode(skill="functions", mastery=0.9, confidence=0.9,
+                               prerequisites=["variables"]),
+        "loops": SkillNode(skill="loops", mastery=0.2, confidence=0.5,
+                           prerequisites=["variables"]),
+        # needs BOTH functions and loops; loops is still weak
+        "comprehensions": SkillNode(skill="comprehensions", mastery=0.1, confidence=0.3,
+                                    prerequisites=["functions", "loops"]),
+        "recursion": SkillNode(skill="recursion", mastery=0.1, confidence=0.3,
+                               prerequisites=["functions"]),
+    })
+
+    unlocked = graph.next_skills("functions")
+    assert "recursion" in unlocked, "recursion's only prerequisite is mastered"
+    assert "comprehensions" not in unlocked, "loops is still unmastered, so it is blocked"
+
+
+def test_next_skills_is_empty_when_the_skill_itself_is_not_mastered() -> None:
+    """Nothing is unlocked by a skill the student has not actually learned."""
+    graph = SkillGraph({
+        "functions": SkillNode(skill="functions", mastery=0.3, confidence=0.5),
+        "recursion": SkillNode(skill="recursion", mastery=0.1, confidence=0.3,
+                               prerequisites=["functions"]),
+    })
+    assert graph.next_skills("functions") == []
+
+
+def test_next_skills_orders_by_readiness_then_name() -> None:
+    """Nearest to ready first, so the recommendation is the gentlest next step."""
+    graph = SkillGraph({
+        "functions": SkillNode(skill="functions", mastery=0.9, confidence=0.9),
+        "alpha": SkillNode(skill="alpha", mastery=0.5, confidence=0.5,
+                           prerequisites=["functions"]),
+        "beta": SkillNode(skill="beta", mastery=0.1, confidence=0.5,
+                          prerequisites=["functions"]),
+    })
+    assert graph.next_skills("functions") == ["alpha", "beta"]
+
+
+def test_dependents_is_the_inverse_of_prerequisites() -> None:
+    graph = SkillGraph({
+        "functions": SkillNode(skill="functions", mastery=0.9, confidence=0.9),
+        "recursion": SkillNode(skill="recursion", mastery=0.1, confidence=0.3,
+                               prerequisites=["functions"]),
+    })
+    assert graph.dependents("functions") == ["recursion"]
+    assert graph.prerequisites("recursion") == ["functions"]

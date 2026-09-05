@@ -98,6 +98,12 @@ class AgentState(TypedDict, total=False):
     session_status: str
     loop_count: int
     prereq_depth: int
+    recommended_next_skill: str | None
+    """What to study next, set by `finalize` when the target was actually mastered.
+
+    Absent rather than empty when nothing was unlocked: a session that halted on a limit,
+    or one whose target still has unmastered dependents, has nothing honest to recommend.
+    """
 
 
 def initial_state(

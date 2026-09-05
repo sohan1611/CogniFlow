@@ -840,15 +840,36 @@ def make_finalize(deps: GraphDeps) -> Node:
                 if state.get("loop_count", 0) >= deps.max_loops
                 else SessionStatus.COMPLETED
             )
-        deps.events.emit(
-            "finalize",
-            EventType.SESSION_END,
-            {
-                "status": str(status),
-                "loops": state.get("loop_count", 0),
-                "skills_touched": sorted(state.get("topic_attempt_count", {})),
-            },
-        )
-        return {"session_status": str(status)}
+
+        # A session that ends without saying what comes next leaves the student exactly
+        # where an untutored one would be: finished, and guessing. The graph already
+        # knows -- mastering a skill unlocks whatever depended on it.
+        recommended: str | None = None
+        reason: str | None = None
+        target = state.get("target_skill")
+        if target:
+            graph = _graph_from_state(state)
+            if graph.is_mastered(target, MASTERY_THRESHOLD):
+                unlocked = graph.next_skills(target, MASTERY_THRESHOLD)
+                if unlocked:
+                    recommended = unlocked[0]
+                    reason = (
+                        f"{target} is mastered, and it was the last prerequisite "
+                        f"{recommended} was waiting on"
+                    )
+
+        payload: dict[str, Any] = {
+            "status": str(status),
+            "loops": state.get("loop_count", 0),
+            "skills_touched": sorted(state.get("topic_attempt_count", {})),
+        }
+        if recommended:
+            payload["recommended_next"] = recommended
+        deps.events.emit("finalize", EventType.SESSION_END, payload, reason=reason)
+
+        patch: dict[str, Any] = {"session_status": str(status)}
+        if recommended:
+            patch["recommended_next_skill"] = recommended
+        return patch
 
     return finalize

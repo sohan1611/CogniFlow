@@ -96,6 +96,36 @@ class SkillGraph:
             key=lambda item: (self._nodes[item].mastery * self._nodes[item].confidence, item),
         )
 
+    def dependents(self, skill: str) -> list[str]:
+        """Skills that list this one as a prerequisite, in deterministic order.
+
+        The inverse of `prerequisites`. Where that answers "what is blocking me", this
+        answers "what does finishing this open up".
+        """
+        self._require_skill(skill)
+        return sorted(self._graph.successors(skill))
+
+    def next_skills(self, skill: str, threshold: float = 0.6) -> list[str]:
+        """Skills that mastering `skill` has actually unlocked, easiest first.
+
+        A dependent only counts if EVERY prerequisite of it is now mastered -- otherwise
+        recommending it just moves the student to a different wall. Ordered by descending
+        mastery so the nearest thing to ready comes first, alphabetical on ties.
+
+        Deliberately narrow: only direct dependents. Suggesting a skill three edges away
+        would mean claiming the student is ready for something we have no evidence about.
+        """
+        self._require_skill(skill)
+        if not self.is_mastered(skill, threshold):
+            return []
+        ready = [
+            candidate
+            for candidate in self.dependents(skill)
+            if not self.is_mastered(candidate, threshold)
+            and not self.unmastered_prerequisites(candidate, threshold)
+        ]
+        return sorted(ready, key=lambda s: (-self._nodes[s].mastery, s))
+
     def with_updated(self, node: SkillNode) -> Self:
         """Return a new SkillGraph with one node replaced."""
 
