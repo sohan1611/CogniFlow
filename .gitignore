@@ -12,3 +12,10 @@ data/cogniflow.db
 results/
 .agents/codex-*.txt
 build/
+
+# The demo video lives on the v1.0-stage1 GitHub Release, not in git history.
+# It is 41 MB; committing it would roughly double the clone a judge has to make
+# for a file they can stream instead.
+*.mp4
+*.mov
+*.mkv
