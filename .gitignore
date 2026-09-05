@@ -19,3 +19,7 @@ build/
 *.mp4
 *.mov
 *.mkv
+
+# Editor/agent scaffolding, not project workflow. `python run.py ui` is the documented
+# way to start the UI; this file only exists to point a preview pane at a fixed port.
+.claude/

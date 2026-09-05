@@ -449,3 +449,9 @@ Newest entries at the bottom. Gists only, never secrets.
 - Space entry imports `demo` from app_gradio rather than copying it, so the deployed and
   local versions cannot drift.
 - 253 passed, 1 skipped.
+
+## 2026-09-06 — Work order 1 (Claude -> Codex)
+- Task: P1 items 4 and 6 — durable student identity + persistence in ui.py, a "My progress" dashboard, and `StudentStore.distinct_skills`.
+- Codex: implemented all three plus tests/test_ui_persistence.py; could not run the suite (its Windows sandbox cannot spawn processes) and said so.
+- Review: verified pass. 266 tests green; persistence round-tripped through a real graph session and a database reopen (0.35 -> 0.877 survived); dashboard and returning-student greeting checked in a live browser. One correction sent: `student_id_from_name` was defined in ui.py and tested by AST-extracting and exec'ing a copy — moved to app/services/student_store.py so the test imports the real function.
+- Note: `codex exec resume` rejects both `-C` and `-s`; its flag set is much smaller than `codex exec`. Corrections went as a fresh `exec` with a self-contained spec instead.

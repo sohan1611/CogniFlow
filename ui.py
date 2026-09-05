@@ -2,12 +2,14 @@
 
     .venv/Scripts/python.exe -m streamlit run ui.py
 
-Two modes:
+Three modes:
 
   Watch      replay the scripted prerequisite-redirect scenario, step by step.
   Be the     a real tutoring session where YOU are the student. This exercises the
   student   genuine LangGraph interrupt/resume cycle -- the graph checkpoints and halts
             while you think, and resumes when you submit.
+  My progress
+            review a named student's durable mastery and recent attempts.
 
 Invariant: this module renders state, it never decides anything. Every adaptation shown
 here was produced by the graph. If the UI disappeared, the behaviour would be identical.
@@ -28,6 +30,7 @@ from app.graph.builder import build_graph  # noqa: E402
 from app.graph.deps import GraphDeps  # noqa: E402
 from app.graph.state import initial_state  # noqa: E402
 from app.llm.provider import default_chain  # noqa: E402
+from app.mastery.policy import MASTERY_THRESHOLD  # noqa: E402
 from app.models.enums import StudentOutcome  # noqa: E402
 from app.rag.retriever import Retriever  # noqa: E402
 from app.services.demo_runner import (  # noqa: E402
@@ -37,7 +40,7 @@ from app.services.demo_runner import (  # noqa: E402
     seed_student,
 )
 from app.services.events import EventLog, EventType  # noqa: E402
-from app.services.student_store import StudentStore  # noqa: E402
+from app.services.student_store import StudentStore, student_id_from_name  # noqa: E402
 
 st.set_page_config(page_title="CogniFlow", page_icon="🎓", layout="wide")
 
@@ -149,6 +152,75 @@ def mastery_table(scores: dict[str, float], highlight: str | None = None) -> Non
         st.progress(min(max(value, 0.0), 1.0))
 
 
+def render_progress_dashboard(store: StudentStore, student_id: str) -> None:
+    nodes = store.load_skills(student_id)
+    scores = {skill: node.mastery for skill, node in nodes.items()}
+
+    if not scores:
+        st.info("No saved starting profile yet — start a session in 'Be the student'.")
+        return
+
+    overall = sum(scores.values()) / len(scores)
+    attempts = store.attempts_for(student_id)
+    practised = store.distinct_skills(student_id)
+
+    top_left, top_right = st.columns(2)
+    top_left.metric("Overall mastery", f"{overall:.1%}")
+    top_right.metric("Skills practised", len(practised))
+    st.metric("Total attempts", len(attempts))
+
+    needs_work = sorted(
+        ((skill, value) for skill, value in scores.items() if value < MASTERY_THRESHOLD),
+        key=lambda item: item[1],
+    )
+    strong = sorted(
+        ((skill, value) for skill, value in scores.items() if value >= MASTERY_THRESHOLD),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+
+    left, right = st.columns(2)
+    with left:
+        st.subheader("Needs work")
+        if needs_work:
+            st.table(
+                [
+                    {"Skill": skill, "Mastery": f"{value:.2f}"}
+                    for skill, value in needs_work
+                ]
+            )
+        else:
+            st.caption("No skills below the mastery threshold.")
+    with right:
+        st.subheader("Strong")
+        if strong:
+            st.table(
+                [
+                    {"Skill": skill, "Mastery": f"{value:.2f}"}
+                    for skill, value in strong
+                ]
+            )
+        else:
+            st.caption("No skills at the mastery threshold yet.")
+
+    st.subheader("Recent activity")
+    if not attempts:
+        st.info("No attempts recorded yet — start a session in 'Be the student'.")
+        return
+
+    recent = list(reversed(attempts))[:10]
+    st.table(
+        [
+            {
+                "Skill": row["skill"],
+                "Outcome": row["outcome"],
+                "Mastery": f"{row['mastery_before']:.2f} -> {row['mastery_after']:.2f}",
+            }
+            for row in recent
+        ]
+    )
+
+
 def tutor_response(values: dict) -> None:
     """What the tutor says to the STUDENT about their last attempt.
 
@@ -237,7 +309,9 @@ def path_banner(path: list[str]) -> None:
 # ---------------------------------------------------------------- sidebar
 st.sidebar.title("🎓 CogniFlow")
 st.sidebar.caption("Adaptive tutoring with prerequisite-aware remediation")
-mode = st.sidebar.radio("Mode", ["Watch the demo", "Be the student"])
+mode = st.sidebar.radio("Mode", ["Watch the demo", "Be the student", "My progress"])
+name = st.sidebar.text_input("Your name", value="", placeholder="e.g. Aarav")
+student_id = student_id_from_name(name)
 st.sidebar.divider()
 st.sidebar.markdown("**Starting model**")
 for skill, (mastery, _conf) in DEMO_SEED.items():
@@ -318,6 +392,25 @@ if mode == "Watch the demo":
                     "our outages."
                 )
 
+# =============================================================== progress mode
+elif mode == "My progress":
+    st.title("My progress")
+    if not student_id:
+        st.info("Enter your name in the sidebar to see your progress.")
+    else:
+        progress_store = StudentStore()
+        try:
+            if not progress_store.exists(student_id):
+                st.info(
+                    "No progress found for this name yet — start a session in "
+                    "'Be the student'."
+                )
+            else:
+                st.caption(f"Student: {name.strip()}")
+                render_progress_dashboard(progress_store, student_id)
+        finally:
+            progress_store.close()
+
 # =========================================================== interactive mode
 else:
     st.title("You are the student")
@@ -326,9 +419,29 @@ else:
         "then resumes from that checkpoint when you submit."
     )
 
-    if "app" not in st.session_state:
-        store = StudentStore(":memory:")
-        seed_student(store, "you")
+    active_student_id = student_id or "you"
+    build_key = f"durable:{active_student_id}" if student_id else "anonymous:you"
+    returning_student = False
+
+    if (
+        "app" not in st.session_state
+        or st.session_state.get("built_for") != build_key
+    ):
+        old_store = st.session_state.get("store")
+        if old_store is not None:
+            old_store.close()
+
+        if student_id:
+            store = StudentStore()
+            is_new = store.ensure_student(active_student_id)
+            if is_new:
+                seed_student(store, active_student_id)
+            returning_student = not is_new
+        else:
+            store = StudentStore(":memory:")
+            seed_student(store, active_student_id)
+
+        thread_id = f"ui-{active_student_id}"
         events = EventLog()
         deps = GraphDeps(store, events) if LIVE else GraphDeps.offline(store, events)
         deps.retriever = Retriever()
@@ -336,21 +449,38 @@ else:
             store=store,
             events=events,
             app=build_graph(deps),
-            cfg={"configurable": {"thread_id": "ui-session"}},
+            cfg={"configurable": {"thread_id": thread_id}},
+            thread_id=thread_id,
+            built_for=build_key,
+            returning_student=returning_student,
             started=False,
             state=None,
         )
 
+    store: StudentStore = st.session_state["store"]
     app = st.session_state["app"]
     cfg = st.session_state["cfg"]
     events: EventLog = st.session_state["events"]
 
-    target = st.selectbox("Target skill", list(DEMO_SEED), index=list(DEMO_SEED).index("recursion"))
+    if student_id and st.session_state.get("returning_student"):
+        st.success(f"Welcome back, {name.strip()}. Picking up where you left off.")
+        attempts = store.attempts_for(active_student_id)
+        if attempts:
+            st.info(f"Where you left off: **{attempts[-1]['skill']}**.")
+
+    target = st.selectbox(
+        "Target skill", list(DEMO_SEED), index=list(DEMO_SEED).index("recursion")
+    )
 
     if not st.session_state["started"]:
         if st.button("▶ Start session", type="primary"):
             st.session_state["state"] = app.invoke(
-                initial_state("you", "ui-session", target_skill=target), cfg
+                initial_state(
+                    active_student_id,
+                    st.session_state["thread_id"],
+                    target_skill=target,
+                ),
+                cfg,
             )
             st.session_state["started"] = True
             st.rerun()
@@ -392,7 +522,17 @@ else:
                     f"after {values.get('loop_count', 0)} loops."
                 )
                 if st.button("Start over"):
-                    for key in ("app", "started", "state", "events", "store", "cfg"):
+                    for key in (
+                        "app",
+                        "started",
+                        "state",
+                        "events",
+                        "store",
+                        "cfg",
+                        "thread_id",
+                        "built_for",
+                        "returning_student",
+                    ):
                         st.session_state.pop(key, None)
                     st.rerun()
 

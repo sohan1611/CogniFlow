@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -59,6 +60,16 @@ CREATE TABLE IF NOT EXISTS attempt_log (
 
 CREATE INDEX IF NOT EXISTS idx_attempt_student ON attempt_log(student_id, skill);
 """
+
+
+def student_id_from_name(name: str) -> str:
+    """Convert a display name into a stable storage key.
+
+    Raw names are not used as primary keys because case, leading/trailing spaces, and
+    punctuation variations would create accidental duplicate students for the same
+    person.
+    """
+    return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
 
 
 def _now() -> str:
@@ -207,6 +218,16 @@ class StudentStore:
         query += " ORDER BY id"
         with self._connect() as conn:
             return [dict(r) for r in conn.execute(query, params).fetchall()]
+
+    def distinct_skills(self, student_id: str) -> list[str]:
+        """Skills this student has actually attempted, alphabetically."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT skill FROM attempt_log"
+                " WHERE student_id = ? ORDER BY skill",
+                (student_id,),
+            ).fetchall()
+        return [row["skill"] for row in rows]
 
     def outcome_counts(self, student_id: str, skill: str) -> dict[str, int]:
         counts: dict[str, int] = {}
