@@ -41,6 +41,7 @@ def build(out="docs/CogniFlow_Video_Guide.pdf"):
     d.h2("What is in this guide")
     d.table([
         ["Section", "What it is", "When to read it"],
+        ["0. Getting the code", "Putting CogniFlow on YOUR machine", "Before anything else"],
         ["1. The one idea", "What CogniFlow does, in plain English", "First. Twice."],
         ["2. The five concepts", "Every term you might be asked about", "Over 2-3 sittings"],
         ["3. Reading the screen", "What each line of output means", "With the app open"],
@@ -52,6 +53,106 @@ def build(out="docs/CogniFlow_Video_Guide.pdf"):
         ["9. Glossary", "Every term in one place", "Whenever stuck"],
         ["10. Learning plan", "What to study, in priority order", "Today"],
     ], [30 * mm, 82 * mm, 45 * mm])
+
+    d.pagebreak()
+
+    # ------------------------------------------------------------------ 0
+    d.h1("0. Getting the code onto your machine")
+    d.p("You are a collaborator on the GitHub repository, but the code is not on your "
+        "computer yet. Everything else in this guide assumes it is. Do this first, and "
+        "do it <b>before</b> the day you plan to record - one step downloads a large "
+        "file and you do not want to be watching a progress bar with the camera "
+        "running.", LEAD)
+
+    d.h2("Step 1 - Get the code")
+    d.code([
+        "git clone https://github.com/sohan1611/CogniFlow.git",
+        "cd CogniFlow",
+    ])
+    d.p("If <font face='Courier'>git</font> is not recognised, install Git for Windows "
+        "from git-scm.com first. If you do not have Python, install it from python.org "
+        "- any version from 3.11 upwards will do.")
+
+    d.h2("Step 2 - Install the dependencies")
+    d.code(["python run.py install"])
+    d.p("This creates a private folder of libraries inside the project. It does not "
+        "touch anything else on your computer, and takes about a minute.")
+
+    d.h2("Step 3 - Get your own API keys")
+    d.callout(
+        "Do not ask Sohan for his keys - make your own",
+        "The keys are deliberately NOT in the repository: committing credentials is "
+        "forbidden by rulebook section 6 and is a disqualification path under section "
+        "13, so cloning gives you the code and no keys. Both providers we use are free, "
+        "take about two minutes each, and need no billing details.<br/><br/>"
+        "Making your own is better than borrowing: you are not sharing a secret, and "
+        "the two accounts have separate rate limits, so the team gets double the "
+        "headroom.",
+        GOOD,
+    )
+    d.table([
+        ["Provider", "Where to get a free key", "Environment variable"],
+        ["Groq", "console.groq.com  ->  API Keys", "GROQ_API_KEY"],
+        ["Google", "aistudio.google.com/apikey", "GOOGLE_API_KEY"],
+    ], [24 * mm, 74 * mm, 59 * mm])
+    d.p("Then make a copy of <font face='Courier'>.env.example</font>, rename the copy "
+        "to <font face='Courier'>.env</font>, and paste each key after the matching "
+        "<font face='Courier'>=</font> sign. No quotes, no spaces. The file already "
+        "contains the variable names and comments explaining each one.")
+    d.p("<b>Why both, and not just one:</b> Groq is fast but its free tier allows about "
+        "8,000 tokens a minute, and one demo run uses roughly 35,000. So it runs out "
+        "partway through and the program switches to Google automatically. With only one "
+        "key configured you will see <font face='Courier'>degraded=True</font> on screen, "
+        "which is exactly what the script tells you not to film.", SMALL)
+
+    d.h2("Step 4 - Build the search index")
+    d.code(["python run.py ingest"])
+    d.callout(
+        "This is the slow one - do it the day before",
+        "The first run downloads a <b>79 MB</b> language model used to search the course "
+        "notes. It is free and it happens exactly once, but on a new machine and an "
+        "ordinary connection it can take several minutes. Every later run reuses it and "
+        "finishes in seconds. <b>Run this well before you plan to record.</b>",
+        WARN,
+    )
+
+    d.h2("Step 5 - Prove it works")
+    d.code(["python run.py live"])
+    d.p("You want to see the line "
+        "<font face='Courier'>Learning path : recursion -&gt; functions -&gt; "
+        "recursion</font> and seven <font face='Courier'>[PASS]</font> lines at the end. "
+        "If you see those, you are ready and the rest of this guide applies to you "
+        "exactly as written.")
+    d.p("Timed from a clean clone on 5 September: <b>97 seconds</b> for steps 1, 2, 4 "
+        "and 5 together, on a machine that already had the 79 MB model. Add the download "
+        "time for yours.", SMALL)
+
+    d.h2("If something goes wrong")
+    d.table([
+        ["What you see", "What to do"],
+        ["'git' is not recognised", "Install Git for Windows from git-scm.com, then "
+                                    "reopen the terminal."],
+        ["'python' is not recognised",
+         "Install Python from python.org and tick 'Add Python to PATH' during setup."],
+        ["Install fails on a missing package",
+         "Tell Sohan the exact error line. Do not start editing files."],
+        ["degraded=True in the output",
+         "A key is missing or wrong. Check .env has both keys and no stray quotes."],
+        ["It runs but is very slow the first time",
+         "That is the 79 MB download in step 4. Normal, and only once."],
+    ], [45 * mm, 112 * mm])
+
+    d.callout(
+        "The fallback, if setup will not cooperate today",
+        "Sohan runs <font face='Courier'>python run.py live</font> on his machine and "
+        "screen-records it, sends you the video file, and you record your narration over "
+        "that footage. This is legitimate - section 5 of this guide already explains why "
+        "narrating over a finished real run is fine, and a recording of a genuine run is "
+        "the same thing. Nothing is invented. It is a worse experience for you than "
+        "driving it yourself, but it is a real option and it is better than a rushed "
+        "take.",
+        DEEP,
+    )
 
     d.pagebreak()
 
@@ -510,6 +611,9 @@ def build(out="docs/CogniFlow_Video_Guide.pdf"):
 
     d.table([
         ["Priority", "What", "Time", "How"],
+        ["Do this first", "Section 0 - get the code running on your own machine",
+         "30 min", "Nothing else in this guide works until it does. Do not leave it "
+         "to recording day."],
         ["Essential", "Section 1, until you can say the one idea without reading it",
          "30 min", "Read it, then explain it out loud to someone"],
         ["Essential", "Watch a run three times, following the lines in section 3",
