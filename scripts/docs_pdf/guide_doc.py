@@ -47,6 +47,7 @@ def build(out="docs/CogniFlow_Video_Guide.pdf"):
         ["3. Reading the screen", "What each line of output means", "With the app open"],
         ["4. The map", "Which PART to read at which moment", "Before rehearsing"],
         ["5. Narrating alone", "Technique for doing both jobs at once", "Before rehearsing"],
+        ["5b. Recording it", "Software, settings, joining clips", "Before recording"],
         ["6. Setup", "Exact commands, in order", "Recording day"],
         ["7. If it breaks", "What to do live", "Skim, then trust it"],
         ["8. Questions", "What judges may ask you", "Before the finale"],
@@ -57,101 +58,232 @@ def build(out="docs/CogniFlow_Video_Guide.pdf"):
     d.pagebreak()
 
     # ------------------------------------------------------------------ 0
-    d.h1("0. Getting the code onto your machine")
+    d.h1("0. Getting CogniFlow running on your machine")
     d.p("You are a collaborator on the GitHub repository, but the code is not on your "
-        "computer yet. Everything else in this guide assumes it is. Do this first, and "
-        "do it <b>before</b> the day you plan to record - one step downloads a large "
-        "file and you do not want to be watching a progress bar with the camera "
-        "running.", LEAD)
+        "computer yet, and everything else in this guide assumes it is. This section "
+        "assumes you have never done this before and that nobody is sitting next to "
+        "you. Follow it in order. Every step says what you should see, and what to do "
+        "when you see something else instead.", LEAD)
 
-    d.h2("Step 1 - Get the code")
-    d.code([
-        "git clone https://github.com/sohan1611/CogniFlow.git",
-        "cd CogniFlow",
-    ])
-    d.p("If <font face='Courier'>git</font> is not recognised, install Git for Windows "
-        "from git-scm.com first. If you do not have Python, install it from python.org "
-        "- any version from 3.11 upwards will do.")
-
-    d.h2("Step 2 - Install the dependencies")
-    d.code(["python run.py install"])
-    d.p("This creates a private folder of libraries inside the project. It does not "
-        "touch anything else on your computer, and takes about a minute.")
-
-    d.h2("Step 3 - Get your own API keys")
     d.callout(
-        "Do not ask Sohan for his keys - make your own",
-        "The keys are deliberately NOT in the repository: committing credentials is "
-        "forbidden by rulebook section 6 and is a disqualification path under section "
-        "13, so cloning gives you the code and no keys. Both providers we use are free, "
-        "take about two minutes each, and need no billing details.<br/><br/>"
-        "Making your own is better than borrowing: you are not sharing a secret, and "
-        "the two accounts have separate rate limits, so the team gets double the "
-        "headroom.",
-        GOOD,
-    )
-    d.table([
-        ["Provider", "Where to get a free key", "Environment variable"],
-        ["Groq", "console.groq.com  ->  API Keys", "GROQ_API_KEY"],
-        ["Google", "aistudio.google.com/apikey", "GOOGLE_API_KEY"],
-    ], [24 * mm, 74 * mm, 59 * mm])
-    d.p("Then make a copy of <font face='Courier'>.env.example</font>, rename the copy "
-        "to <font face='Courier'>.env</font>, and paste each key after the matching "
-        "<font face='Courier'>=</font> sign. No quotes, no spaces. The file already "
-        "contains the variable names and comments explaining each one.")
-    d.p("<b>Why both, and not just one:</b> Groq is fast but its free tier allows about "
-        "8,000 tokens a minute, and one demo run uses roughly 35,000. So it runs out "
-        "partway through and the program switches to Google automatically. With only one "
-        "key configured you will see <font face='Courier'>degraded=True</font> on screen, "
-        "which is exactly what the script tells you not to film.", SMALL)
-
-    d.h2("Step 4 - Build the search index")
-    d.code(["python run.py ingest"])
-    d.callout(
-        "This is the slow one - do it the day before",
-        "The first run downloads a <b>79 MB</b> language model used to search the course "
-        "notes. It is free and it happens exactly once, but on a new machine and an "
-        "ordinary connection it can take several minutes. Every later run reuses it and "
-        "finishes in seconds. <b>Run this well before you plan to record.</b>",
+        "Budget an evening - and not recording day",
+        "The commands themselves take about five minutes. What takes longer is the "
+        "<b>79 MB</b> download in step 0.7 and any installing you need to do first. Do "
+        "all of section 0 <b>the day before you record.</b> Once done it stays done, and "
+        "every later run starts in seconds.",
         WARN,
     )
 
-    d.h2("Step 5 - Prove it works")
-    d.code(["python run.py live"])
-    d.p("You want to see the line "
-        "<font face='Courier'>Learning path : recursion -&gt; functions -&gt; "
-        "recursion</font> and seven <font face='Courier'>[PASS]</font> lines at the end. "
-        "If you see those, you are ready and the rest of this guide applies to you "
-        "exactly as written.")
-    d.p("Timed from a clean clone on 5 September: <b>97 seconds</b> for steps 1, 2, 4 "
-        "and 5 together, on a machine that already had the 79 MB model. Add the download "
-        "time for yours.", SMALL)
+    d.h2("0.1  What you need before you start")
+    d.table([
+        ["You need", "Why", "If you do not have it"],
+        ["Git", "To download the code", "git-scm.com - install with all defaults"],
+        ["Python 3.11 or newer", "To run it",
+         "python.org/downloads - during setup TICK 'Add python.exe to PATH'. This "
+         "matters; without it nothing below works."],
+        ["Internet", "Downloads, and the AI providers", "-"],
+        ["About 1 GB free disk", "Libraries and the search model", "-"],
+    ], [30 * mm, 40 * mm, 87 * mm])
 
-    d.h2("If something goes wrong")
+    d.h2("0.2  Opening a terminal")
+    d.p("A terminal is a window where you type commands. On Windows press "
+        "<b>Windows key + R</b>, type <font face='Courier'>powershell</font>, press "
+        "Enter. That window is your terminal.")
+    d.bullets([
+        "<b>You can paste into it.</b> Copy a command from this PDF, then right-click "
+        "in the terminal. Ctrl+V also works in PowerShell.",
+        "<b>It runs commands where it is standing.</b> After 0.4 you move into the "
+        "project folder, and every later command must be typed there. If you close the "
+        "terminal, you must cd back into the folder before continuing.",
+    ])
+
+    d.h2("0.3  Check what you already have")
+    d.p("Type these, pressing Enter after each:")
+    d.code(["git --version", "python --version"])
+    d.table([
+        ["What you see", "What it means"],
+        ["A version number for both", "Good. Go to 0.4."],
+        ["'not recognized' for git",
+         "Install Git from git-scm.com, then CLOSE the terminal and open a new one."],
+        ["'not recognized' for python",
+         "Install Python from python.org and tick 'Add python.exe to PATH'. Then close "
+         "and reopen the terminal."],
+        ["Python 3.10 or older",
+         "Install a newer one from python.org. Built on 3.14; 3.11 and up are fine."],
+        ["It opens the Microsoft Store",
+         "Windows is intercepting the command. Install from python.org instead, then "
+         "reopen the terminal."],
+    ], [42 * mm, 115 * mm])
+    d.p("<b>Closing and reopening the terminal after installing anything is not "
+        "optional.</b> A terminal only learns about newly installed programs when it "
+        "starts.", SMALL)
+
+    d.h2("0.4  Download the code")
+    d.code([
+        "cd Desktop",
+        "git clone https://github.com/sohan1611/CogniFlow.git",
+        "cd CogniFlow",
+    ])
+    d.p("You should see it downloading, then finish. You are now standing inside the "
+        "project folder, and every remaining command is typed here.")
+    d.p("If it says <i>Repository not found</i>: accept the collaborator invitation in "
+        "your GitHub notifications first, then try again.", SMALL)
+
+    d.h2("0.5  Install the libraries")
+    d.code(["python run.py install"])
+    d.p("This creates a private folder of libraries <i>inside the project</i>. It "
+        "changes nothing else on your computer and takes about a minute. Yellow WARNING "
+        "lines about scripts not being on PATH are normal - ignore them.")
     d.table([
         ["What you see", "What to do"],
-        ["'git' is not recognised", "Install Git for Windows from git-scm.com, then "
-                                    "reopen the terminal."],
-        ["'python' is not recognised",
-         "Install Python from python.org and tick 'Add Python to PATH' during setup."],
-        ["Install fails on a missing package",
-         "Tell Sohan the exact error line. Do not start editing files."],
-        ["degraded=True in the output",
-         "A key is missing or wrong. Check .env has both keys and no stray quotes."],
-        ["It runs but is very slow the first time",
-         "That is the 79 MB download in step 4. Normal, and only once."],
+        ["It finishes with no red text", "Good. Continue to 0.6."],
+        ["'No module named pip'",
+         "Reinstall Python from python.org, ticking pip in the optional features."],
+        ["A red error naming a specific package",
+         "Run the command again - a dropped download is the usual cause. If it fails "
+         "identically twice, see 0.9."],
     ], [45 * mm, 112 * mm])
 
+    d.h2("0.6  Get your own API keys")
     d.callout(
-        "The fallback, if setup will not cooperate today",
-        "Sohan runs <font face='Courier'>python run.py live</font> on his machine and "
-        "screen-records it, sends you the video file, and you record your narration over "
-        "that footage. This is legitimate - section 5 of this guide already explains why "
-        "narrating over a finished real run is fine, and a recording of a genuine run is "
-        "the same thing. Nothing is invented. It is a worse experience for you than "
-        "driving it yourself, but it is a real option and it is better than a rushed "
-        "take.",
-        DEEP,
+        "Make your own keys - do not ask for anyone else's",
+        "The keys are deliberately not in the repository. Committing credentials is "
+        "forbidden by rulebook section 6 and is a disqualification path under section "
+        "13, so cloning gives you the code and no keys. Both providers are free, take "
+        "about two minutes each, and ask for no billing details.<br/><br/>"
+        "Your own keys are also better for the team: two accounts have separate rate "
+        "limits, so you get double the headroom instead of sharing one ceiling.",
+        GOOD,
+    )
+    d.table([
+        ["Provider", "Where to get a free key", "Name in .env"],
+        ["Groq", "console.groq.com - sign in, API Keys, Create API Key. Copy it "
+                 "immediately; it is shown once.", "GROQ_API_KEY"],
+        ["Google", "aistudio.google.com/apikey - sign in, Create API key.",
+         "GOOGLE_API_KEY"],
+    ], [24 * mm, 74 * mm, 59 * mm])
+
+    d.h3("Putting the keys in the right place")
+    d.p("The project reads them from a file called <font face='Courier'>.env</font> - "
+        "note the dot at the start. A template sits next to it called "
+        "<font face='Courier'>.env.example</font>. Make the real one from your terminal, "
+        "inside the project folder:")
+    d.code(["copy .env.example .env", "notepad .env"])
+    d.p("Notepad opens. Find these two lines and paste your keys directly after the "
+        "equals signs - <b>no quotes, no spaces</b>:")
+    d.code(["GROQ_API_KEY=gsk_yourkeyhere", "GOOGLE_API_KEY=AIzaYourKeyHere"])
+    d.p("Save with Ctrl+S and close Notepad.")
+    d.callout(
+        "Do not create this file by hand in File Explorer",
+        "Windows hides file extensions by default, so a file you name '.env' in Explorer "
+        "usually becomes '.env.txt' and the project will never find it. The "
+        "<font face='Courier'>copy</font> command above avoids that entirely.",
+        WARN,
+    )
+
+    d.h3("Check the keys work, on their own")
+    d.code(["python run.py check"])
+    d.p("This makes one real call per provider. You want two lines starting "
+        "<font face='Courier'>[PASS]</font>. A line saying "
+        "<font face='Courier'>[SKIP] anthropic</font> is expected and correct - we do "
+        "not use a paid provider.")
+    d.table([
+        ["What you see", "What it means"],
+        ["[PASS] groq and [PASS] google", "Both keys work. Continue."],
+        ["[SKIP] for a key you did set",
+         "The name in .env is wrong, or the file did not save. Check the spelling is "
+         "exactly GROQ_API_KEY and GOOGLE_API_KEY."],
+        ["An authentication or 401 error",
+         "The key was copied incompletely. Generate a fresh one and paste it again."],
+        ["[PASS] for only one of the two",
+         "You can still record, but expect occasional degraded=True. The second key is "
+         "two minutes and worth it."],
+    ], [45 * mm, 112 * mm])
+
+    d.h2("0.7  Build the search index")
+    d.code(["python run.py ingest"])
+    d.callout(
+        "The slow step - the one to do the day before",
+        "The first run downloads a <b>79 MB</b> model used to search the course notes. "
+        "Free, and it happens exactly once. On a new machine it can take several "
+        "minutes and may look frozen while downloading - it is not. Every later run "
+        "reuses it and finishes in seconds.",
+        WARN,
+    )
+    d.p("It finishes by listing each topic with a chunk count, like "
+        "<font face='Courier'>recursion: 8</font>. That is success.")
+
+    d.h2("0.8  Prove the whole thing works")
+    d.code(["python run.py live"])
+    d.p("This is the real demo - the one you will record. It takes roughly 40 to 70 "
+        "seconds. At the end you want <b>both</b> of these:")
+    d.table([
+        ["Look for", "Exactly"],
+        ["The learning path", "Learning path : recursion -> functions -> recursion"],
+        ["The self-checks", "seven lines starting [PASS], and no [FAIL]"],
+    ], [45 * mm, 112 * mm])
+    d.p("If you see both, <b>you are completely set up</b> and the rest of this guide "
+        "applies exactly as written. Run it twice more to get familiar with what scrolls "
+        "past, and read section 6 - it explains what may legitimately differ between "
+        "runs and what must not.")
+
+    d.h2("0.9  If something is still broken")
+    d.p("Work down this list. Almost every problem is one of the first three.", LEAD)
+    d.table([
+        ["Symptom", "Most likely cause", "What to do"],
+        ["A command is 'not recognized'",
+         "Not installed, or the terminal was open before you installed it",
+         "Close the terminal, open a new one, retry. If it still fails, install the "
+         "program per 0.1."],
+        ["'cannot find the path' / 'No such file'",
+         "You are not standing in the project folder",
+         "Type 'cd Desktop' then 'cd CogniFlow', and retry."],
+        ["degraded=True in the output",
+         "A key is missing, misspelled, or wrapped in quotes",
+         "Run 'python run.py check' and fix whatever it reports, per 0.6."],
+        ["ModuleNotFoundError",
+         "The install did not finish",
+         "Run 'python run.py install' again, watching for red text."],
+        ["Rate limit, or 429, in the output",
+         "You ran the demo several times in quick succession",
+         "Wait a minute and run again. With both keys it usually recovers on its own - "
+         "that is the failover working, and it is worth mentioning on camera."],
+        ["It runs but no [PASS] lines appear",
+         "The run stopped early",
+         "Scroll up and read the last lines before it stopped. If that does not help, "
+         "use 0.10."],
+        ["Works, but very slow the first time",
+         "The 79 MB download in 0.7", "Normal, and only once. Let it finish."],
+    ], [40 * mm, 44 * mm, 73 * mm])
+
+    d.h2("0.10  If you cannot get a full live run today")
+    d.p("You still have a video. These are ranked best to worst, and <b>all four are "
+        "honest</b> - none of them fabricates anything.", LEAD)
+    d.table([
+        ["Tier", "What it is", "What to say on camera"],
+        ["1", "Both keys, full live run. What the script assumes.", "Nothing extra."],
+        ["2", "One key only. Works; occasional degraded=True.",
+         "\"That provider is rate-limited there, so it fell back to a deterministic "
+         "template. The tutoring decisions are unaffected - the model does not make "
+         "those.\""],
+        ["3", "No keys at all. Run 'python run.py verify' instead. Everything works "
+              "except the exercise wording, which comes from built-in templates.",
+         "\"I am running this without an API key, so the exercise wording comes from a "
+         "template. Every decision you are about to see - the diagnosis, the redirect, "
+         "the mastery updates - is computed exactly as it would be live.\" Then narrate "
+         "normally."],
+        ["4", "Setup will not cooperate at all. Ask Sohan for five minutes: he runs "
+              "'python run.py live', screen-records it, and sends you the file.",
+         "Record your narration over that footage. Section 5 explains why narrating "
+         "over a finished real run is legitimate."],
+    ], [12 * mm, 68 * mm, 77 * mm])
+    d.callout(
+        "Tier 3 beats no video, by a mile",
+        "A required deliverable that is missing scores zero. A working demo narrated "
+        "honestly, with one sentence explaining that the exercise wording is templated, "
+        "loses very little - the agentic behaviour a judge is assessing is identical "
+        "either way. <b>Do not let a missing API key stop you recording.</b>",
+        GOOD,
     )
 
     d.pagebreak()
@@ -445,13 +577,85 @@ def build(out="docs/CogniFlow_Video_Guide.pdf"):
 
     d.pagebreak()
 
+    # ------------------------------------------------------------------ 5b
+    d.h1("5b. Actually recording it")
+    d.p("Software, settings and the mechanics of joining clips. None of this is "
+        "difficult, but all of it is easier decided now than at the moment you want to "
+        "press record.", LEAD)
+
+    d.h2("What to record with")
+    d.table([
+        ["Tool", "How", "Notes"],
+        ["Windows Game Bar", "Press Windows key + G, then the record button. Already "
+                             "installed on Windows 10 and 11.",
+         "Easiest option. Records the active window plus your microphone. Saves to "
+         "Videos/Captures."],
+        ["OBS Studio", "Free from obsproject.com. Add a Display Capture source and an "
+                       "Audio Input source, then Start Recording.",
+         "More setup, better control. Worth it only if Game Bar refuses to record your "
+         "terminal."],
+        ["Phone on a stand", "Point it at the screen.", "Last resort. Text will be hard "
+                                                        "to read - avoid if you can."],
+    ], [32 * mm, 66 * mm, 59 * mm])
+
+    d.h2("Settings that matter")
+    d.bullets([
+        "<b>Record the whole screen, not a window.</b> You will switch between the "
+        "terminal and, for PART 10, a browser.",
+        "<b>Make the terminal text big.</b> In PowerShell: Ctrl and the mouse wheel, or "
+        "right-click the title bar, Properties, Font, size 20 or more. A judge may watch "
+        "this on a phone.",
+        "<b>Check the microphone is actually being captured</b> before the real take. "
+        "Record ten seconds, play it back, listen. Silent footage is the single most "
+        "common recording disaster.",
+        "<b>Turn off notifications.</b> Windows key + A, then Focus assist / Do not "
+        "disturb. A message popping up mid-take means recording that PART again.",
+        "<b>Close everything else</b> - browser tabs, chat, music. Both for "
+        "notifications and because a cluttered screen reads as a cluttered project.",
+    ])
+
+    d.h2("Recording PART by PART, and joining the clips")
+    d.p("Recording each PART as its own clip is strongly recommended when you are alone. "
+        "A mistake then costs thirty seconds instead of five minutes.")
+    d.table([
+        ["To join clips", "How"],
+        ["Windows Clipchamp", "Already installed on Windows 11. Drag clips onto the "
+                              "timeline in order, then Export at 1080p."],
+        ["Windows Photos", "On Windows 10: Photos, New video project, add the clips, "
+                           "Finish video."],
+        ["Anything you already know", "Any editor is fine. No effects, no music, no "
+                                      "transitions are needed - plain cuts are correct "
+                                      "for a technical demo."],
+    ], [38 * mm, 119 * mm])
+
+    d.callout(
+        "Check the finished length before you submit",
+        "The rulebook allows <b>3 to 5 minutes</b>. PARTs 1 to 9 come to roughly 4:15 of "
+        "speech, so a joined video should land near 4:30. If you are over 5:00, drop "
+        "PART 10 first, then trim silences. <b>Being over the limit is a rule breach; "
+        "being at 4:00 is not.</b>",
+        WARN,
+    )
+
+    d.h2("Before you call it finished")
+    d.bullets([
+        "Watch the whole thing back, once, with sound.",
+        "Can you read the terminal text at normal playback size?",
+        "Is your voice clear and roughly even between clips?",
+        "Is the total between 3:00 and 5:00?",
+        "Does the <font face='Courier'>[prereq_redirect]</font> moment stay on screen "
+        "long enough to read? That is the one shot that must land.",
+        "Are there notification pop-ups or a stray personal window anywhere in frame?",
+    ])
+
     # ------------------------------------------------------------------ 6
     d.h1("6. Setup - recording day")
     d.p("This is PART 0 of the script, repeated so it is in both documents.", LEAD)
 
     d.h3("Step 1 - Prove it works before recording anything")
+    d.p("In a terminal standing inside your CogniFlow folder - see section 0 if you "
+        "have not set it up yet:")
     d.code([
-        "cd D:\\Downloads\\BloodCoded",
         "python run.py check      # one real call per AI provider",
         "python run.py live       # the full demo against real models",
     ])
@@ -478,8 +682,11 @@ def build(out="docs/CogniFlow_Video_Guide.pdf"):
         "<b>The duration changes.</b> 42 to 65 seconds observed.",
     ])
     d.p("That variation is the <i>student</i> being scripted while the <i>tutor</i> is "
-        "not, which is precisely the claim. <b>Stop and tell Sohan only if the learning "
-        "path itself changes, or if any check reports FAIL.</b>")
+        "not, which is precisely the claim. <b>The only thing that should never vary is "
+        "the learning path itself.</b> If that changes, or any check reports FAIL, "
+        "run it twice more before concluding anything - a single odd run is far more "
+        "likely to be a rate limit than a broken system, and section 0.9 lists what "
+        "each symptom means.")
 
     d.h3("Step 3 - Screen and audio")
     d.bullets([
@@ -519,7 +726,10 @@ def build(out="docs/CogniFlow_Video_Guide.pdf"):
          "\"Something went wrong there - let me re-run it.\" Then run "
          "'python run.py verify', which needs no internet."],
         ["The learning path came out different",
-         "The one thing that should never vary", "Stop. Tell Sohan before continuing."],
+         "The one thing that should never vary",
+         "Stop recording and run it twice more. If it settles, carry on. If it "
+         "genuinely differs every time, record with 'python run.py verify' instead "
+         "- see tier 3 in section 0.10 - rather than losing the video."],
     ], [34 * mm, 44 * mm, 79 * mm])
 
     d.h3("Known quirk worth understanding")

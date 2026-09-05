@@ -63,9 +63,10 @@ def build(out="docs/CogniFlow_Video_Script.pdf"):
     d.h1("PART 0 - Before you press record")
     d.p("Nothing here is spoken. Do all of it first.", LEAD)
 
-    d.p("Run these and confirm they pass:", BODY)
+    d.p("Section 0 of the guide must be done first - the code on your own machine, "
+        "both keys in .env, the search index built. Then, in a terminal standing "
+        "inside the CogniFlow folder:", BODY)
     d.code([
-        "cd D:\\Downloads\\BloodCoded",
         "python run.py check      # one real call per AI provider",
         "python run.py live       # the full demo against real models",
     ])
@@ -91,8 +92,10 @@ def build(out="docs/CogniFlow_Video_Script.pdf"):
         "<b>The duration changes.</b> 42 to 65 seconds observed.",
     ])
     d.p("That variation is the <i>student</i> being scripted while the <i>tutor</i> is "
-        "not - which is exactly what we are claiming. <b>Only stop and tell Sohan if the "
-        "learning path itself changes, or if any check says FAIL.</b>")
+        "not - which is exactly what we are claiming. <b>The only thing that should never "
+        "vary is the learning path.</b> If it does change, run it twice more before "
+        "concluding anything - guide section 0.9 lists what each symptom means, and "
+        "0.10 gives you a way to record even if it cannot be fixed today.")
 
     d.h3("Screen and audio")
     d.bullets([
@@ -303,7 +306,8 @@ def build(out="docs/CogniFlow_Video_Script.pdf"):
          "'python run.py verify', which needs no internet."],
         ["The learning path came out different",
          "The one thing that should never vary",
-         "Stop recording. Tell Sohan before continuing."],
+         "Stop and run it twice more. If it settles, carry on. If not, guide "
+         "section 0.10 tier 3 lets you record anyway."],
     ], [34 * mm, 44 * mm, 79 * mm])
 
     d.h3("Two things never to say")
