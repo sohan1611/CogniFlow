@@ -388,3 +388,16 @@ def test_the_plan_points_where_the_diagnostic_pointed(client: TestClient) -> Non
         f"diagnostic said start at {summary['weakest_skill']!r}, "
         f"plan suggests {plan['suggested_next']!r}"
     )
+
+
+def test_the_plan_counts_add_up(client: TestClient) -> None:
+    """Three numbers shown side by side must be readable as three buckets.
+
+    Adding "provisional" without touching "upcoming" -- which meant "not completed" --
+    put the middle bucket in two places at once: 0 done, 3 looking good, 8 upcoming, out
+    of a total of 8. Nobody reads that as containment; they read it as a bug.
+    """
+    plan = _sit_the_diagnostic(client, "rhea")
+    counts = plan["counts"]
+    assert counts["done"] + counts["provisional"] + counts["upcoming"] == counts["total"]
+    assert counts["total"] == len(plan["skills"])

@@ -489,7 +489,13 @@ def learning_plan(student_id: str) -> dict[str, Any]:
             # real, and burying that in "upcoming" throws it away -- but calling it
             # "done" is the overclaim this state exists to stop.
             "provisional": sum(1 for i in plan if i["state"] == "provisional"),
-            "upcoming": sum(1 for i in plan if i["state"] != "completed"),
+            # The three counts PARTITION the total, so they can be read side by side and
+            # add up. Before "provisional" existed, upcoming meant "not completed" and
+            # that was the same thing; with a third state it silently started counting
+            # the middle bucket twice -- 0 done, 3 looking good, 8 upcoming, out of 8.
+            "upcoming": sum(
+                1 for i in plan if i["state"] not in ("completed", "provisional")
+            ),
         },
         "skills": plan,
     }
