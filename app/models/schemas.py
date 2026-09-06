@@ -22,7 +22,18 @@ class SkillNode(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     attempts: int = Field(ge=0, default=0)
     prerequisites: list[str] = Field(default_factory=list)
+
     misconceptions: list[str] = Field(default_factory=list)
+    """Misunderstandings the student is believed to hold RIGHT NOW."""
+
+    resolved_misconceptions: list[str] = Field(default_factory=list)
+    """Misunderstandings they used to hold and have since demonstrably overcome.
+
+    Kept rather than deleted. "You used to think a recursive call returns itself, and
+    you no longer do" is the single most encouraging thing a tutor can say, and it is
+    also the evidence that remediation worked -- deleting it would throw away the only
+    record that the detour was worth taking.
+    """
 
 
 class DiagnosticResult(BaseModel):

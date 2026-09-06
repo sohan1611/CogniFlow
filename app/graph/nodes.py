@@ -35,7 +35,7 @@ from app.graph.deps import GraphDeps
 from app.graph.state import AgentState
 from app.llm.provider import Role
 from app.mastery import policy
-from app.mastery.bkt import update_skill
+from app.mastery.bkt import resolve_misconceptions, update_skill
 from app.mastery.guard import validate
 from app.mastery.policy import PolicyContext
 from app.mastery.skill_graph import SkillGraph
@@ -66,6 +66,7 @@ logger = logging.getLogger(__name__)
 Node = Callable[[AgentState], dict[str, Any]]
 
 MASTERY_THRESHOLD = policy.MASTERY_THRESHOLD
+CONFIDENCE_THRESHOLD = policy.CONFIDENCE_THRESHOLD
 
 
 # ---------------------------------------------------------------- helpers
@@ -705,6 +706,23 @@ def make_update_mastery(deps: GraphDeps) -> Node:
         graph = _graph_from_state(state)
         node = graph.nodes[skill]
         updated, audit = update_skill(node, outcome, deps.bkt)
+
+        # Resolution belongs here because this is the only place mastery moves, so it is
+        # the only place the bar for "they have grown out of it" can newly be met.
+        updated, resolved = resolve_misconceptions(
+            updated, MASTERY_THRESHOLD, CONFIDENCE_THRESHOLD
+        )
+        if resolved:
+            deps.events.emit(
+                "update_mastery",
+                EventType.MISCONCEPTION,
+                {"skill": skill, "resolved": len(resolved)},
+                reason=(
+                    f"{skill} reached mastery with confidence; "
+                    f"{len(resolved)} misconception(s) marked resolved"
+                ),
+                evidence=resolved[:3],
+            )
 
         deps.store.save_skill(state["student_id"], updated)
         deps.store.log_attempt(state["student_id"], state["session_id"], audit)

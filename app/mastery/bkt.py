@@ -83,6 +83,11 @@ def update_skill(
         attempts=attempts_after,
         prerequisites=list(node.prerequisites),
         misconceptions=list(node.misconceptions),
+        # Carried explicitly. This constructor rebuilds the node from scratch, so a
+        # field omitted here is not preserved -- it is silently reset to empty on the
+        # next attempt, and the record of what a student overcame would disappear the
+        # moment they answered another question.
+        resolved_misconceptions=list(node.resolved_misconceptions),
     )
     audit = SkillUpdate(
         skill=node.skill,
@@ -94,3 +99,40 @@ def update_skill(
         attempts_after=attempts_after,
     )
     return updated, audit
+
+
+def resolve_misconceptions(
+    node: SkillNode,
+    mastery_threshold: float,
+    confidence_threshold: float,
+) -> tuple[SkillNode, list[str]]:
+    """Retire the misconceptions a student has demonstrably grown out of.
+
+    Returns the updated node and the list that was just resolved, so the caller can say
+    so out loud rather than quietly changing the record.
+
+    The bar is mastery AND confidence, the same pair that gates every other "they know
+    this now" decision in the system. Mastery alone would clear a misconception on a
+    single lucky answer, and the BKT model exists precisely because one correct answer
+    is not proof -- it would be incoherent to model slip and guess everywhere else and
+    then ignore both here.
+
+    Resolved entries are moved, never deleted. A student who once thought a recursive
+    call returns itself and no longer does has achieved the thing this whole system is
+    for, and that is worth keeping.
+
+    Thresholds are parameters rather than imports: this module is the arithmetic layer
+    and does not decide policy, it applies it.
+    """
+    if not node.misconceptions:
+        return node, []
+    if node.mastery < mastery_threshold or node.confidence < confidence_threshold:
+        return node, []
+
+    newly_resolved = list(node.misconceptions)
+    already = list(node.resolved_misconceptions)
+    combined = already + [m for m in newly_resolved if m not in already]
+    updated = node.model_copy(
+        update={"misconceptions": [], "resolved_misconceptions": combined}
+    )
+    return updated, newly_resolved

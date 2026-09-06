@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS skill_mastery (
     attempts       INTEGER NOT NULL DEFAULT 0,
     prerequisites  TEXT NOT NULL DEFAULT '[]',
     misconceptions TEXT NOT NULL DEFAULT '[]',
+    resolved_misconceptions TEXT NOT NULL DEFAULT '[]',
     updated_at     TEXT NOT NULL,
     PRIMARY KEY (student_id, skill)
 );
@@ -89,6 +90,24 @@ class StudentStore:
             self._memory_conn = sqlite3.connect(":memory:", check_same_thread=False)
         with self._connect() as conn:
             conn.executescript(SCHEMA)
+            self._migrate(conn)
+
+    @staticmethod
+    def _migrate(conn: sqlite3.Connection) -> None:
+        """Add columns that arrived after a student's database was first written.
+
+        `CREATE TABLE IF NOT EXISTS` does nothing to a table that already exists, so a
+        returning student whose row predates a new column would otherwise crash the load
+        that was supposed to welcome them back. Additive and idempotent: it only ever
+        adds a missing column with a default, so it cannot lose data and can run on
+        every open.
+        """
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(skill_mastery)")}
+        if "resolved_misconceptions" not in columns:
+            conn.execute(
+                "ALTER TABLE skill_mastery"
+                " ADD COLUMN resolved_misconceptions TEXT NOT NULL DEFAULT '[]'"
+            )
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -146,6 +165,7 @@ class StudentStore:
                 attempts=row["attempts"],
                 prerequisites=json.loads(row["prerequisites"]),
                 misconceptions=json.loads(row["misconceptions"]),
+                resolved_misconceptions=json.loads(row["resolved_misconceptions"]),
             )
             for row in rows
         }
@@ -156,12 +176,14 @@ class StudentStore:
             conn.execute(
                 "INSERT INTO skill_mastery"
                 " (student_id, skill, mastery, confidence, attempts, prerequisites,"
-                "  misconceptions, updated_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                "  misconceptions, resolved_misconceptions, updated_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT(student_id, skill) DO UPDATE SET"
                 "  mastery=excluded.mastery, confidence=excluded.confidence,"
                 "  attempts=excluded.attempts, prerequisites=excluded.prerequisites,"
-                "  misconceptions=excluded.misconceptions, updated_at=excluded.updated_at",
+                "  misconceptions=excluded.misconceptions,"
+                "  resolved_misconceptions=excluded.resolved_misconceptions,"
+                "  updated_at=excluded.updated_at",
                 (
                     student_id,
                     node.skill,
@@ -170,6 +192,7 @@ class StudentStore:
                     node.attempts,
                     json.dumps(node.prerequisites),
                     json.dumps(node.misconceptions),
+                    json.dumps(node.resolved_misconceptions),
                     _now(),
                 ),
             )

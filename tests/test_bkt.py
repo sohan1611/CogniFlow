@@ -10,6 +10,7 @@ import pytest
 from app.mastery.bkt import BKTParams, confidence_from_attempts, posterior, update
 from app.models.enums import StudentOutcome, SystemFault
 from app.models.errors import InvalidEvidenceError
+from app.models.schemas import SkillNode
 
 
 def test_correct_never_decreases_mastery() -> None:
@@ -61,3 +62,67 @@ def test_confidence_from_attempts_is_increasing_and_bounded() -> None:
 def test_bkt_params_reject_degenerate_slip_guess_sum() -> None:
     with pytest.raises(ValueError):
         BKTParams(p_slip=0.5, p_guess=0.5)
+
+
+# -------------------------------------------------------- misconception resolution
+def _node(**kw) -> SkillNode:
+    base = dict(skill="recursion", mastery=0.9, confidence=0.9,
+                misconceptions=["thinks a recursive call returns itself"])
+    base.update(kw)
+    return SkillNode(**base)
+
+
+def test_misconceptions_resolve_only_with_mastery_AND_confidence() -> None:
+    """One lucky answer must not clear a misunderstanding.
+
+    The whole reason this system uses BKT is that a single correct answer is not proof.
+    Clearing a misconception on mastery alone would model slip and guess everywhere
+    except the one place a student is told they have fixed something.
+    """
+    from app.mastery.bkt import resolve_misconceptions
+
+    # mastered and confident -> resolved
+    node, resolved = resolve_misconceptions(_node(), 0.6, 0.5)
+    assert resolved and node.misconceptions == []
+    assert node.resolved_misconceptions == ["thinks a recursive call returns itself"]
+
+    # mastered but not yet confident -> untouched
+    node, resolved = resolve_misconceptions(_node(confidence=0.2), 0.6, 0.5)
+    assert resolved == [] and len(node.misconceptions) == 1
+
+    # confident but not mastered -> untouched
+    node, resolved = resolve_misconceptions(_node(mastery=0.3), 0.6, 0.5)
+    assert resolved == [] and len(node.misconceptions) == 1
+
+
+def test_resolved_misconceptions_are_moved_not_deleted() -> None:
+    """The record that remediation worked is the point, not a side effect."""
+    from app.mastery.bkt import resolve_misconceptions
+
+    node, _ = resolve_misconceptions(_node(), 0.6, 0.5)
+    assert node.misconceptions == []
+    assert len(node.resolved_misconceptions) == 1
+
+
+def test_resolution_does_not_duplicate_an_already_resolved_entry() -> None:
+    """A student can re-learn the same lesson without it being recorded twice."""
+    from app.mastery.bkt import resolve_misconceptions
+
+    already = _node(resolved_misconceptions=["thinks a recursive call returns itself"])
+    node, resolved = resolve_misconceptions(already, 0.6, 0.5)
+    assert node.resolved_misconceptions == ["thinks a recursive call returns itself"]
+    assert resolved == ["thinks a recursive call returns itself"]
+
+
+def test_update_skill_preserves_resolved_history() -> None:
+    """Regression: update_skill rebuilds the node, so an omitted field is wiped.
+
+    Without this, every subsequent attempt would silently erase the record of what the
+    student had already overcome.
+    """
+    from app.mastery.bkt import update_skill
+
+    node = SkillNode(skill="recursion", mastery=0.5, confidence=0.5,
+                     resolved_misconceptions=["an old mistake"])
+    updated, _ = update_skill(node, StudentOutcome.CORRECT, BKTParams())
+    assert updated.resolved_misconceptions == ["an old mistake"]

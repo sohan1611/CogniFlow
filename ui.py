@@ -204,6 +204,25 @@ def render_progress_dashboard(store: StudentStore, student_id: str) -> None:
         else:
             st.caption("No skills at the mastery threshold yet.")
 
+    # What they used to get wrong and no longer do. This is the only screen in the app
+    # that shows a student they have changed, rather than where they currently stand.
+    overcome = [
+        (skill, item)
+        for skill, node in sorted(nodes.items())
+        for item in node.resolved_misconceptions
+    ]
+    still_held = [
+        (skill, item)
+        for skill, node in sorted(nodes.items())
+        for item in node.misconceptions
+    ]
+    if overcome or still_held:
+        st.subheader("Misconceptions")
+        for skill, item in overcome:
+            st.success(f"**Overcome** · `{skill}` — {item}")
+        for skill, item in still_held:
+            st.warning(f"**Still working on** · `{skill}` — {item}")
+
     st.subheader("Recent activity")
     if not attempts:
         st.info("No attempts recorded yet — start a session in 'Be the student'.")
