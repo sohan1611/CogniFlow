@@ -455,3 +455,11 @@ Newest entries at the bottom. Gists only, never secrets.
 - Codex: implemented all three plus tests/test_ui_persistence.py; could not run the suite (its Windows sandbox cannot spawn processes) and said so.
 - Review: verified pass. 266 tests green; persistence round-tripped through a real graph session and a database reopen (0.35 -> 0.877 survived); dashboard and returning-student greeting checked in a live browser. One correction sent: `student_id_from_name` was defined in ui.py and tested by AST-extracting and exec'ing a copy — moved to app/services/student_store.py so the test imports the real function.
 - Note: `codex exec resume` rejects both `-C` and `-s`; its flag set is much smaller than `codex exec`. Corrections went as a fresh `exec` with a self-contained spec instead.
+
+## 2026-09-06 — Work order 2 (Claude -> Codex)
+- Task: P2.7 progressive hints — a two-level ladder per misconception, `hints_for()`, and an "I'm stuck" button that reveals one at a time.
+- Codex: implemented all three plus tests/test_hints.py. To make hint selection recognise a base-case-less draft, it added `code_patterns` and `outcomes` to the `missing_base_case` pattern.
+- Review: corrections sent. Those two fields are what `detect()` matches on, and `missing_base_case` is first in PATTERNS, so it shadowed `print_instead_of_return` — a print-vs-return mistake started reporting `prerequisite_hint="conditionals"` instead of `"functions"`, which would redirect a student to the wrong prerequisite. The existing suite caught it (`test_print_instead_of_return_is_detected_from_source`).
+- Fix: hint matching moved to its own `HINT_CODE_SIGNATURES` table that never calls `detect()`. Detection and hint selection answer different questions — one runs after a failure on interpreter evidence and changes the learning path, the other runs on an unfinished draft and only changes a displayed sentence. A guess good enough for a hint is not good enough to reroute a student.
+- Verified: 288 pass, ALL GATES PASSED, demo path `recursion -> functions -> recursion` 7/7, diagnosis still implicates `functions`.
+- Lesson for future specs: say explicitly which behaviour must NOT change, not only which files are out of scope.

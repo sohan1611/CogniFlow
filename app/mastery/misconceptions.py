@@ -43,6 +43,14 @@ class Pattern:
     a sentence we can simply write correctly once.
     """
 
+    hints: tuple[str, ...] = ()
+    """Progressive help to show before a submission, without containing the fix.
+
+    A hint may point at the right question or concept, but it must not give corrected
+    code or tell the student which exact edit to make. A hint that hands over the
+    answer teaches the student they needed handing the answer.
+    """
+
     stderr_patterns: tuple[str, ...] = ()
     stdout_patterns: tuple[str, ...] = ()
     code_patterns: tuple[str, ...] = ()
@@ -59,6 +67,11 @@ PATTERNS: tuple[Pattern, ...] = (
             "itself all the way down. What is the smallest input where it should return "
             "immediately, without calling itself again?"
         ),
+        hints=(
+            "Think about when this function should STOP calling itself.",
+            "What is the smallest input where it should just return a value straight "
+            "away, without calling itself again?",
+        ),
         stderr_patterns=(r"RecursionError", r"maximum recursion depth"),
     ),
     Pattern(
@@ -69,6 +82,12 @@ PATTERNS: tuple[Pattern, ...] = (
             "You are computing the recursive call but not returning it, so the function hands "
             "back None and the arithmetic fails. Look at the line that calls itself: what happens "
             "to the value it produces?"
+        ),
+        hints=(
+            "Think about what your function gives back to the caller after it makes "
+            "the recursive call.",
+            "Look at the line that calls the function again. Where does the value "
+            "from that call go next?",
         ),
         stderr_patterns=(
             r"unsupported operand type\(s\).*NoneType",
@@ -85,6 +104,12 @@ PATTERNS: tuple[Pattern, ...] = (
             "None. Printing shows a value to a human; returning gives it back to the code. Which "
             "one does the caller need here?"
         ),
+        hints=(
+            "Think about who needs the answer: a person reading the screen, or "
+            "another piece of code.",
+            "Look inside the function body. Is the answer being sent back to the "
+            "caller, or only shown on the screen?",
+        ),
         code_patterns=(r"def\s+\w+\([^)]*\):(?:(?!return).)*?print\(",),
         outcomes=(StudentOutcome.WRONG_ANSWER,),
     ),
@@ -95,6 +120,11 @@ PATTERNS: tuple[Pattern, ...] = (
         student_note=(
             "Your loop never finishes, so the program was stopped for you. Look at the variable "
             "in the loop condition: is anything inside the loop actually changing it?"
+        ),
+        hints=(
+            "Think about what has to change before the loop can finish.",
+            "Look at the value used in the loop condition. Does it move closer to "
+            "making the condition false each time around?",
         ),
         outcomes=(StudentOutcome.STUDENT_TIMEOUT,),
     ),
@@ -107,6 +137,12 @@ PATTERNS: tuple[Pattern, ...] = (
             "the base case is never reached. Compare the argument you pass to the one you "
             "received: is it getting closer to the stopping point?"
         ),
+        hints=(
+            "Think about whether each recursive call is working on a smaller version "
+            "of the problem.",
+            "Compare the input you received with the input you pass into the next "
+            "call. Is it moving toward the stopping point?",
+        ),
         code_patterns=(r"def\s+(\w+)\([^)]*\):(?:(?!\1\s*\(\s*\w+\s*[-+]).)*?\1\s*\(\s*\w+\s*\)",),
     ),
     Pattern(
@@ -118,6 +154,11 @@ PATTERNS: tuple[Pattern, ...] = (
             "defined, or it was defined inside another function and is not visible here. Where is "
             "that name first assigned?"
         ),
+        hints=(
+            "Think about the names your code uses and where each one first comes from.",
+            "Find the first line where Python reaches that name. Has that name "
+            "already been created before that point?",
+        ),
         stderr_patterns=(r"NameError",),
     ),
     Pattern(
@@ -128,8 +169,48 @@ PATTERNS: tuple[Pattern, ...] = (
             "The indentation puts some statements outside the block you meant them to be in, so "
             "they run at the wrong time. Which lines are meant to belong to the body above them?"
         ),
+        hints=(
+            "Think about which lines belong inside the same block of work.",
+            "Look at the lines just after a colon. Are the statements that belong "
+            "together lined up the same way?",
+        ),
         stderr_patterns=(r"IndentationError", r"TabError"),
     ),
+)
+
+
+SKILL_HINTS: dict[str, tuple[str, str]] = {
+    "recursion": (
+        "Think about the moment when the repeated work should stop.",
+        "Compare one call to the next: is the problem getting smaller and closer "
+        "to a simple case?",
+    ),
+    "functions": (
+        "Think about what information goes into the function and what should come "
+        "back out.",
+        "Look at the last useful value your function makes. What needs to happen "
+        "to that value so the caller can use it?",
+    ),
+    "loops": (
+        "Think about what has to stay true while the loop runs.",
+        "Check one trip through the loop at a time. Which value changes, and when "
+        "should the loop be finished?",
+    ),
+    "conditionals": (
+        "Think about the different cases the problem describes.",
+        "For each branch, ask which inputs should go there and what should happen "
+        "only in that case.",
+    ),
+    "variables": (
+        "Think about what each name is meant to store.",
+        "Trace one name from the first place it is created to each place it is used.",
+    ),
+}
+
+GENERIC_HINTS: tuple[str, str] = (
+    "Re-read the prompt and name the single part you are unsure about.",
+    "Pick one example input and walk through what your code should do before you "
+    "change anything.",
 )
 
 
@@ -170,3 +251,39 @@ def detect(
             return pattern
 
     return None
+
+
+HINT_CODE_SIGNATURES: tuple[tuple[str, str], ...] = (
+    # More specific signatures come first: recursive drafts that also print should get
+    # the recursion hint because that is the harder block in the unfinished work.
+    (
+        r"(?ims)^([ \t]*)def\s+([A-Za-z_]\w*)\s*\([^)]*\)\s*:\s*\n"
+        r"(?=(?:(?!^\1\S).)*^\1[ \t]+.*\b\2\s*\()"
+        r"(?!(?:(?!^\1\S).)*^\1[ \t]+.*\bif\b)",
+        "missing_base_case",
+    ),
+    (
+        r"(?ims)^([ \t]*)def\s+[A-Za-z_]\w*\s*\([^)]*\)\s*:\s*\n"
+        r"(?=(?:(?!^\1\S).)*^\1[ \t]+.*\bprint\s*\()"
+        r"(?!(?:(?!^\1\S).)*^\1[ \t]+.*\breturn\b)",
+        "print_instead_of_return",
+    ),
+)
+"""Heuristics over an INCOMPLETE draft for selecting hint text only.
+
+These signatures never influence routing or mastery; diagnosis uses PATTERNS and
+real failure evidence instead, so a draft-level guess cannot redirect a student.
+"""
+
+
+def hints_for(skill: str, code: str | None = None) -> tuple[str, ...]:
+    """The hint ladder to offer a student stuck on `skill`."""
+    if code is not None:
+        for regex, pattern_key in HINT_CODE_SIGNATURES:
+            if re.search(regex, code):
+                pattern = next(
+                    item for item in PATTERNS if item.key == pattern_key
+                )
+                return pattern.hints
+
+    return SKILL_HINTS.get(skill, GENERIC_HINTS)

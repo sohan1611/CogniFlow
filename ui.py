@@ -30,6 +30,7 @@ from app.graph.builder import build_graph  # noqa: E402
 from app.graph.deps import GraphDeps  # noqa: E402
 from app.graph.state import initial_state  # noqa: E402
 from app.llm.provider import default_chain  # noqa: E402
+from app.mastery.misconceptions import hints_for  # noqa: E402
 from app.mastery.policy import MASTERY_THRESHOLD  # noqa: E402
 from app.models.enums import StudentOutcome  # noqa: E402
 from app.rag.retriever import Retriever  # noqa: E402
@@ -510,8 +511,35 @@ else:
                 if problem.get("expected_output"):
                     st.caption(f"Expected output: `{problem['expected_output']}`")
 
+                problem_id = values.get("current_problem_id") or "current"
+                hint_count_key = f"hint_count:{problem_id}"
+                code_key = f"student_code:{problem_id}"
+                hint_ladder = hints_for(
+                    str(values.get("target_skill") or ""),
+                    st.session_state.get(code_key),
+                )
+                if st.button(
+                    "I'm stuck - give me a hint",
+                    key=f"hint_button:{problem_id}",
+                ):
+                    shown = st.session_state.get(hint_count_key, 0)
+                    st.session_state[hint_count_key] = min(
+                        shown + 1, len(hint_ladder)
+                    )
+                hint_count = st.session_state.get(hint_count_key, 0)
+                for index, hint in enumerate(hint_ladder[:hint_count], start=1):
+                    st.info(f"**Hint {index}.** {hint}")
+                if hint_count >= len(hint_ladder):
+                    st.info(
+                        "That's as much as I can give you without doing it for you - "
+                        "have a go, and I'll tell you exactly what went wrong."
+                    )
+
                 code = st.text_area(
-                    "Your code", value=problem.get("starter_code", ""), height=180
+                    "Your code",
+                    value=problem.get("starter_code", ""),
+                    height=180,
+                    key=code_key,
                 )
                 if st.button("Submit", type="primary"):
                     st.session_state["state"] = app.invoke(Command(resume={"code": code}), cfg)
