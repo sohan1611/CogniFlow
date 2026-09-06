@@ -22,6 +22,7 @@
   --lilac-2: #f8effe;
   --sky: #e4effe;
   --butter: #fdf3d3;
+  --butter-ink: #8a5a08;
   --leaf: #ddf6e4;
   --amber: #f4a72c;
 
@@ -162,6 +163,8 @@ p  { margin: 0 0 10px; }
 .stat span { font-size: .66rem; letter-spacing: .09em; color: var(--ink-3); font-weight: 700; }
 .stat.done { background: var(--mint); border-color: transparent; }
 .stat.done b { color: var(--mint-ink); }
+.stat.maybe { background: var(--butter); border-color: transparent; }
+.stat.maybe b { color: var(--butter-ink); }
 
 /* ------------------------------------------------------------------ plan */
 .plan { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 28px; position: relative; }
@@ -192,6 +195,10 @@ p  { margin: 0 0 10px; }
 }
 .chip.done { background: var(--mint); color: var(--mint-ink); }
 .chip.now  { background: rgba(255, 255, 255, .78); color: #6a4bc7; }
+/* Provisional: right once, not yet confirmed. Deliberately NOT mint -- a student
+   should be able to tell "you finished this" from "you look fine so far" across a
+   grid of cards without reading a word of it. */
+.chip.maybe { background: var(--butter); color: var(--butter-ink); }
 
 .dot { width: 26px; height: 26px; border-radius: 999px; display: grid; place-items: center; font-size: .78rem; background: var(--mint); }
 .dot.lock { background: #f6f2e4; }

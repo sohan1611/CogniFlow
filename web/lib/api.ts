@@ -109,8 +109,13 @@ export type TutorView = {
 export type PlanSkill = {
   skill: string;
   /** Decided by the ENGINE. The UI must never recompute this: whether a skill is
-   *  locked is a prerequisite judgement, and this system exists to make those. */
-  state: "completed" | "locked" | "available";
+   *  locked is a prerequisite judgement, and this system exists to make those.
+   *
+   *  "provisional" is mastery without the evidence to trust it -- one right answer puts
+   *  BKT at 0.85 mastery on 0.22 confidence, which the guard will not ADVANCE on. Shown
+   *  as its own thing because calling it "completed" told students they had finished
+   *  five topics they had answered one question about. */
+  state: "completed" | "provisional" | "locked" | "available";
   mastery: number;
   confidence: number;
   attempts: number;
@@ -124,7 +129,7 @@ export type PlanSkill = {
 export type Plan = {
   student_id: string;
   suggested_next: string | null;
-  counts: { total: number; done: number; upcoming: number };
+  counts: { total: number; done: number; provisional: number; upcoming: number };
   skills: PlanSkill[];
 };
 

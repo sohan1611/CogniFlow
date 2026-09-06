@@ -23,6 +23,30 @@ MAX_LOOPS = 25
 MAX_ATTEMPTS_PER_SKILL = 4
 MAX_PREREQ_DEPTH = 3
 
+
+def is_mastered(mastery: float, confidence: float) -> bool:
+    """Has this student actually mastered the skill?
+
+    This is the system's ONE definition, and everything that claims a skill is finished
+    must call it. Both halves are load-bearing. Mastery says the estimate is high;
+    confidence says there is enough evidence behind the estimate to believe it. After a
+    single correct answer BKT returns mastery 0.85 at confidence 0.22 -- a number that
+    looks like knowledge and is actually a prior that has been nudged once.
+
+    The API's learning plan used to test mastery alone, and so told a student who had
+    answered one question per topic that five of eight were "Completed", while `decide`
+    below -- looking at the identical numbers through both halves -- would refuse to
+    ADVANCE any of them. One word, two meanings, and the student was shown the wrong one.
+
+    Not to be confused with `SkillGraph.is_mastered`, which tests mastery against a bare
+    threshold and answers a different question: whether a PREREQUISITE is good enough to
+    let the student move on past it. That one governs routing, deliberately ignores
+    confidence, and must not be changed to match this -- locking a topic because the
+    tutor is unsure about something upstream would strand students behind their own
+    lack of evidence.
+    """
+    return mastery >= MASTERY_THRESHOLD and confidence >= CONFIDENCE_THRESHOLD
+
 # Evidence gates for prerequisite redirects:
 # PREREQ_EVIDENCE_CONFIDENCE prevents the tutor from treating a prior-like
 # mastery estimate as diagnosis-level evidence after only a small number of
@@ -147,7 +171,7 @@ def decide(ctx: PolicyContext) -> AdaptationDecision:
         # Report WHY we stopped honestly. A session that ends at mastery 0.88 because
         # the per-skill attempt cap was reached is a success, not a limit failure, and
         # saying "limit tripped" there reads as a bug to anyone watching.
-        mastered = mastery >= MASTERY_THRESHOLD and confidence >= CONFIDENCE_THRESHOLD
+        mastered = is_mastered(mastery, confidence)
         reason = (
             f"target skill mastered (mastery={mastery:.2f}); session limit also reached: "
             f"{', '.join(tripped_limits)}"
@@ -169,8 +193,7 @@ def decide(ctx: PolicyContext) -> AdaptationDecision:
     if (
         success
         and ctx.prereq_return_stack
-        and mastery >= MASTERY_THRESHOLD
-        and confidence >= CONFIDENCE_THRESHOLD
+        and is_mastered(mastery, confidence)
     ):
         return AdaptationDecision(
             action=AdaptationAction.REVISIT_PREREQUISITE,
@@ -190,7 +213,7 @@ def decide(ctx: PolicyContext) -> AdaptationDecision:
             confidence=confidence,
         )
 
-    if success and mastery >= MASTERY_THRESHOLD and confidence >= CONFIDENCE_THRESHOLD:
+    if success and is_mastered(mastery, confidence):
         return AdaptationDecision(
             action=AdaptationAction.ADVANCE,
             target_skill=ctx.target_skill,

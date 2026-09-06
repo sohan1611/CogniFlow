@@ -121,6 +121,12 @@ export function LearningPlan({
             <b>{plan.counts.done}</b>
             <span>DONE</span>
           </div>
+          {plan.counts.provisional > 0 && (
+            <div className="stat maybe" title="Answered well once — not confirmed yet">
+              <b>{plan.counts.provisional}</b>
+              <span>LOOKS GOOD</span>
+            </div>
+          )}
           <div className="stat">
             <b>{plan.counts.upcoming}</b>
             <span>UPCOMING</span>
@@ -166,6 +172,7 @@ function SkillCard({
 }) {
   const locked = skill.state === "locked";
   const done = skill.state === "completed";
+  const provisional = skill.state === "provisional";
   return (
     <article
       className={`card${active ? " active" : ""}${locked ? " locked" : ""}`}
@@ -179,7 +186,7 @@ function SkillCard({
           </button>
         ) : (
           <div className={`dot${locked ? " lock" : ""}`} aria-hidden>
-            {done ? "✓" : locked ? "🔒" : "＋"}
+            {done ? "✓" : provisional ? "◐" : locked ? "🔒" : "＋"}
           </div>
         )}
       </div>
@@ -194,6 +201,12 @@ function SkillCard({
         </p>
       )}
 
+      {provisional && (
+        <p className="muted" style={{ marginTop: -6, marginBottom: 12 }}>
+          You got this right — one more to be sure
+        </p>
+      )}
+
       <div className="bar" aria-hidden>
         <span style={{ width: `${Math.max(2, Math.min(1, skill.mastery) * 100)}%` }} />
       </div>
@@ -203,6 +216,12 @@ function SkillCard({
           <span className="chip done">Completed 👏</span>
         ) : active ? (
           <span className="chip now">In progress</span>
+        ) : provisional ? (
+          /* One right answer is evidence, not a finished topic. Saying so is the whole
+             difference between a tutor and a progress bar. */
+          <span className="chip maybe" title="Answered well once — one more to be sure">
+            Looks good ◐
+          </span>
         ) : locked ? (
           <span className="chip">Upcoming ⏱</span>
         ) : (

@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 from app.api.main import SESSIONS, app
 from app.config.settings import get_settings
+from app.mastery.policy import MASTERY_THRESHOLD, is_mastered
 
 
 @pytest.fixture
@@ -277,3 +278,113 @@ def test_cors_admits_the_frontend_and_nothing_that_merely_resembles_it(
     the project name."""
     headers = client.get("/health", headers={"Origin": origin}).headers
     assert ("access-control-allow-origin" in headers) is allowed, origin
+
+DIAGNOSTIC_ANSWERS = {
+    "variables": "x = 7\nx = x + 3\nprint(x)",
+    "conditionals": "x = 9\nif x > 5:\n    print('big')\nelse:\n    print('small')",
+    "loops": "total = 0\nfor i in range(1, 5):\n    total = total + i\nprint(total)",
+}
+
+
+def _sit_the_diagnostic(client: TestClient, student: str = "priya") -> dict:
+    """Answer three topics correctly, leave the rest blank, and take the plan.
+
+    Deliberately a FINISHED diagnostic. An unfinished one still reads the seeded demo
+    profile, whose numbers are all comfortably above both thresholds -- so a test that
+    stops early passes whatever the plan does, which is how a vacuous test looks.
+    """
+    client.post("/session", json={"name": student.title()})
+    for _ in range(12):
+        question = client.get(f"/session/{student}/diagnostic").json()
+        if question["complete"]:
+            break
+        client.post(
+            f"/session/{student}/diagnostic",
+            json={
+                "skill": question["skill"],
+                "code": DIAGNOSTIC_ANSWERS.get(question["skill"], ""),
+            },
+        )
+    return client.get(f"/student/{student}/plan").json()
+
+
+def test_one_right_answer_is_not_a_completed_topic(client: TestClient) -> None:
+    """The plan must not claim more than the guard would act on.
+
+    A single correct answer puts BKT at mastery 0.85 on confidence 0.22. The plan tested
+    mastery alone and so told a student who had answered one question per topic that
+    five of eight topics were "Completed" -- while `policy.decide`, reading the identical
+    numbers, would refuse to ADVANCE any of them. One word, two meanings, and the student
+    was shown the wrong one.
+    """
+    plan = _sit_the_diagnostic(client)
+    skills = plan["skills"]
+
+    thin = [
+        s for s in skills
+        if s["mastery"] >= MASTERY_THRESHOLD and not is_mastered(s["mastery"], s["confidence"])
+    ]
+    assert thin, "this test proves nothing unless the diagnostic produced thin evidence"
+    assert all(s["state"] == "provisional" for s in thin), (
+        "a topic answered well on one question is neither finished nor untouched: "
+        f"{[(s['skill'], s['state']) for s in thin]}"
+    )
+
+    for skill in skills:
+        if skill["state"] == "completed":
+            assert is_mastered(skill["mastery"], skill["confidence"]), (
+                f"{skill['skill']} is shown as completed but the guard would not advance "
+                f"on it: mastery={skill['mastery']} confidence={skill['confidence']}"
+            )
+
+    assert plan["counts"]["done"] == sum(1 for s in skills if s["state"] == "completed")
+    assert plan["counts"]["provisional"] == len(thin)
+
+
+def test_a_high_scoring_skill_is_never_locked_behind_a_weak_prerequisite(
+    client: TestClient,
+) -> None:
+    """Locking is about prerequisites; this student's own evidence outranks it.
+
+    Splitting "completed" by confidence put a new branch in front of the "locked" check,
+    and getting that order wrong would shut a student out of a topic they had just
+    answered correctly, because something upstream was unproven. That is the tutor
+    arguing with its own observation.
+    """
+    plan = _sit_the_diagnostic(client, "aarav")
+    for skill in plan["skills"]:
+        if skill["mastery"] >= MASTERY_THRESHOLD:
+            assert skill["state"] != "locked", (
+                f"{skill['skill']} scores {skill['mastery']} and was locked anyway"
+            )
+
+
+def test_the_plan_points_where_the_diagnostic_pointed(client: TestClient) -> None:
+    """The two screens a student sees back to back must not disagree.
+
+    The diagnostic ends with "Start here: X" and the plan then computes its own
+    suggestion, independently, from the stored profile. Nothing in the code makes them
+    agree -- they agree because both reduce to "the weakest thing that can be started
+    now", and this pins that. Live, they had already come apart: a student was told to
+    start at recursion and handed a plan suggesting nested_loops.
+    """
+    client.post("/session", json={"name": "Meera"})
+    summary: dict = {}
+    for _ in range(12):
+        question = client.get("/session/meera/diagnostic").json()
+        if question["complete"]:
+            summary = question
+            break
+        client.post(
+            "/session/meera/diagnostic",
+            json={
+                "skill": question["skill"],
+                "code": DIAGNOSTIC_ANSWERS.get(question["skill"], ""),
+            },
+        )
+
+    plan = client.get("/student/meera/plan").json()
+    assert plan["suggested_next"] == summary["weakest_skill"], (
+        f"diagnostic said start at {summary['weakest_skill']!r}, "
+        f"plan suggests {plan['suggested_next']!r}"
+    )

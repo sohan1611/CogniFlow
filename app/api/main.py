@@ -37,7 +37,7 @@ from app.graph.deps import GraphDeps
 from app.graph.state import initial_state
 from app.llm.provider import Role, available_chain
 from app.mastery.misconceptions import hints_for
-from app.mastery.policy import MASTERY_THRESHOLD
+from app.mastery.policy import MASTERY_THRESHOLD, is_mastered
 from app.mastery.skill_graph import SkillGraph
 from app.models.enums import StudentOutcome
 from app.rag.retriever import Retriever
@@ -439,9 +439,21 @@ def learning_plan(student_id: str) -> dict[str, Any]:
     plan: list[dict[str, Any]] = []
     for name in sorted(nodes):
         node = nodes[name]
+        # Locking is a routing judgement about PREREQUISITES and stays mastery-only,
+        # exactly as the graph and the policy guard compute it. Confidence belongs in the
+        # question below it -- "has this student finished this?" -- not here, or a
+        # student would be shut out of a topic because the tutor is unsure about
+        # something upstream, which is the tutor's problem and not theirs.
         blocking = graph.unmastered_prerequisites(name, MASTERY_THRESHOLD)
-        if node.mastery >= MASTERY_THRESHOLD:
+
+        if is_mastered(node.mastery, node.confidence):
             state = "completed"
+        elif node.mastery >= MASTERY_THRESHOLD:
+            # Answered well, but on thin evidence. Checked BEFORE `locked` on purpose:
+            # this student has shown the skill, and the estimate is about them. Refusing
+            # them a topic they just got right, because something upstream is unproven,
+            # would be the tutor arguing with its own observation.
+            state = "provisional"
         elif blocking:
             state = "locked"
         else:
@@ -463,7 +475,7 @@ def learning_plan(student_id: str) -> dict[str, Any]:
 
     # Where a student should go next: the weakest thing they can actually start. Not the
     # weakest overall, which is usually something locked three prerequisites deep.
-    startable = [item for item in plan if item["state"] == "available"]
+    startable = [item for item in plan if item["state"] in ("available", "provisional")]
     suggested = min(startable, key=lambda i: i["mastery"])["skill"] if startable else None
 
     return {
@@ -472,6 +484,11 @@ def learning_plan(student_id: str) -> dict[str, Any]:
         "counts": {
             "total": len(plan),
             "done": sum(1 for i in plan if i["state"] == "completed"),
+            # Reported separately rather than folded into either side. A quiz that leaves
+            # five topics looking fine on one answer each has told the student something
+            # real, and burying that in "upcoming" throws it away -- but calling it
+            # "done" is the overclaim this state exists to stop.
+            "provisional": sum(1 for i in plan if i["state"] == "provisional"),
             "upcoming": sum(1 for i in plan if i["state"] != "completed"),
         },
         "skills": plan,
