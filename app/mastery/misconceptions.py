@@ -13,6 +13,7 @@ these rules cannot name.
 
 from __future__ import annotations
 
+import ast
 import re
 from dataclasses import dataclass
 
@@ -41,6 +42,15 @@ class Pattern:
     Deterministic on purpose. The rule already knows exactly which misunderstanding
     fired, so asking a model to re-describe it would add latency and a failure mode to
     a sentence we can simply write correctly once.
+    """
+
+    student_note_plain: str = ""
+    """The same diagnosis for code that is NOT recursive.
+
+    Set only where a pattern's trigger is more general than its name. A `NoneType`
+    arithmetic error means "a function returned None"; it does not mean the function was
+    recursive, and telling a student their recursive call is wrong when they wrote none
+    is how a tutor loses their trust.
     """
 
     hints: tuple[str, ...] = ()
@@ -82,6 +92,11 @@ PATTERNS: tuple[Pattern, ...] = (
             "You are computing the recursive call but not returning it, so the function hands "
             "back None and the arithmetic fails. Look at the line that calls itself: what happens "
             "to the value it produces?"
+        ),
+        student_note_plain=(
+            "Your function computes the answer but never returns it, so it hands back "
+            "None and the arithmetic fails. Look at the last thing the function does: "
+            "does the value get back to whoever called it?"
         ),
         hints=(
             "Think about what your function gives back to the caller after it makes "
@@ -253,37 +268,99 @@ def detect(
     return None
 
 
-HINT_CODE_SIGNATURES: tuple[tuple[str, str], ...] = (
-    # More specific signatures come first: recursive drafts that also print should get
-    # the recursion hint because that is the harder block in the unfinished work.
-    (
-        r"(?ims)^([ \t]*)def\s+([A-Za-z_]\w*)\s*\([^)]*\)\s*:\s*\n"
-        r"(?=(?:(?!^\1\S).)*^\1[ \t]+.*\b\2\s*\()"
-        r"(?!(?:(?!^\1\S).)*^\1[ \t]+.*\bif\b)",
-        "missing_base_case",
-    ),
-    (
-        r"(?ims)^([ \t]*)def\s+[A-Za-z_]\w*\s*\([^)]*\)\s*:\s*\n"
-        r"(?=(?:(?!^\1\S).)*^\1[ \t]+.*\bprint\s*\()"
-        r"(?!(?:(?!^\1\S).)*^\1[ \t]+.*\breturn\b)",
-        "print_instead_of_return",
-    ),
-)
-"""Heuristics over an INCOMPLETE draft for selecting hint text only.
+@dataclass(frozen=True)
+class DraftFacts:
+    """What can be established about an unfinished submission, exactly.
 
-These signatures never influence routing or mastery; diagnosis uses PATTERNS and
-real failure evidence instead, so a draft-level guess cannot redirect a student.
-"""
+    Read with `ast` rather than regexes. The previous version tried to bound a search to
+    a function body using indentation backreferences and could not: a call sitting AFTER
+    the function at module level read as the function calling itself, so a draft with no
+    recursion in it was offered recursion hints. The parser already knows where a body
+    ends; guessing at it with a pattern was never going to be right.
+
+    Every field is False for code that does not parse, which is the honest answer for a
+    half-written draft -- and hints are offered on drafts, so that case is normal.
+    """
+
+    parses: bool = False
+    recursive: bool = False
+    """Some function calls itself from inside its own body."""
+    recursive_without_base: bool = False
+    """...and that function contains no `if`, so nothing can stop it."""
+    prints_without_returning: bool = False
+    """Some function prints and never returns, so its caller receives None."""
+
+
+def analyse_draft(code: str | None) -> DraftFacts:
+    """Facts about a draft, used ONLY to choose which words to show.
+
+    Never consulted for routing or mastery. Diagnosis uses PATTERNS against real
+    interpreter output, so a guess about incomplete work cannot redirect a student.
+    """
+    try:
+        tree = ast.parse(code or "")
+    except (SyntaxError, ValueError):
+        return DraftFacts()
+
+    recursive = recursive_without_base = prints_without_returning = False
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        body = list(ast.walk(node))
+        calls_itself = any(
+            isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Name)
+            and n.func.id == node.name
+            for n in body
+        )
+        has_if = any(isinstance(n, ast.If) for n in body)
+        has_return = any(
+            isinstance(n, ast.Return) and n.value is not None for n in body
+        )
+        prints = any(
+            isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "print"
+            for n in body
+        )
+        recursive |= calls_itself
+        recursive_without_base |= calls_itself and not has_if
+        prints_without_returning |= prints and not has_return
+
+    return DraftFacts(
+        parses=True,
+        recursive=recursive,
+        recursive_without_base=recursive_without_base,
+        prints_without_returning=prints_without_returning,
+    )
+
+
+# Which hint ladder an unfinished draft earns. Order is deliberate: a recursive draft
+# that also prints gets the recursion hint, because that is the harder block.
+HINT_DRAFT_SIGNATURES: tuple[tuple[str, str], ...] = (
+    ("recursive_without_base", "missing_base_case"),
+    ("prints_without_returning", "print_instead_of_return"),
+)
+
+
+def student_note_for(pattern: Pattern, code: str | None = None) -> str:
+    """The diagnosis in words that match the code actually submitted.
+
+    One misconception can surface in recursive and non-recursive code alike: a function
+    that computes a value and never returns it hands back None either way, and the
+    interpreter's error is identical. The diagnosis is the same and correct; only the
+    wording has to change, or a student who wrote no recursion is told their "recursive
+    call" is wrong and reasonably stops trusting the tutor.
+    """
+    if pattern.student_note_plain and not analyse_draft(code).recursive:
+        return pattern.student_note_plain
+    return pattern.student_note
 
 
 def hints_for(skill: str, code: str | None = None) -> tuple[str, ...]:
     """The hint ladder to offer a student stuck on `skill`."""
     if code is not None:
-        for regex, pattern_key in HINT_CODE_SIGNATURES:
-            if re.search(regex, code):
-                pattern = next(
-                    item for item in PATTERNS if item.key == pattern_key
-                )
-                return pattern.hints
+        facts = analyse_draft(code)
+        for fact, pattern_key in HINT_DRAFT_SIGNATURES:
+            if getattr(facts, fact):
+                return next(p for p in PATTERNS if p.key == pattern_key).hints
 
     return SKILL_HINTS.get(skill, GENERIC_HINTS)

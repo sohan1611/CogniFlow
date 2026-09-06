@@ -85,3 +85,62 @@ def test_hints_are_not_the_student_note(pattern) -> None:
     assert pattern.student_note
     assert pattern.student_note not in pattern.hints
     assert all(hint != pattern.student_note for hint in pattern.hints)
+
+
+# ------------------------------------------------ wording must match the actual code
+NON_RECURSIVE = "def add(a, b):\n    print(a + b)\n\ntotal = add(2, 3)\nprint(total + 1)"
+RECURSIVE = "def total(n):\n    n + total(n - 1)\n\nprint(total(5) + 1)"
+NONETYPE_ERROR = "TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'"
+
+
+def test_non_recursive_code_is_not_told_its_recursive_call_is_wrong() -> None:
+    """A NoneType arithmetic error means a function returned None. It does not mean the
+    function was recursive, and a student who wrote no recursion being told their
+    "recursive call" is wrong stops trusting the tutor -- correctly.
+    """
+    from app.mastery.misconceptions import detect, student_note_for
+    from app.models.enums import StudentOutcome
+
+    found = detect(code=NON_RECURSIVE, stdout="", stderr=NONETYPE_ERROR,
+                   outcome=StudentOutcome.STUDENT_RUNTIME_ERROR)
+    assert found is not None
+    # The diagnosis is right either way -- only the wording adapts.
+    assert found.prerequisite_hint == "functions"
+    assert "recursi" not in student_note_for(found, NON_RECURSIVE).lower()
+
+
+def test_recursive_code_still_gets_the_recursion_wording() -> None:
+    from app.mastery.misconceptions import detect, student_note_for
+    from app.models.enums import StudentOutcome
+
+    found = detect(code=RECURSIVE, stdout="", stderr=NONETYPE_ERROR,
+                   outcome=StudentOutcome.STUDENT_RUNTIME_ERROR)
+    assert "recursi" in student_note_for(found, RECURSIVE).lower()
+
+
+def test_a_call_after_the_function_is_not_recursion() -> None:
+    """Regression: the old regex bounded a function body by indentation and failed.
+
+    `total = add(2, 3)` sits at module level AFTER the def, and was read as the function
+    calling itself -- so a draft with no recursion was offered recursion hints.
+    """
+    from app.mastery.misconceptions import analyse_draft
+
+    assert analyse_draft(NON_RECURSIVE).recursive is False
+    assert analyse_draft(RECURSIVE).recursive is True
+
+
+def test_hints_follow_the_draft_not_the_pattern_name() -> None:
+    from app.mastery.misconceptions import hints_for
+
+    plain = hints_for("functions", NON_RECURSIVE)[0].lower()
+    assert "calling itself" not in plain, "recursion hints offered for non-recursive code"
+
+
+def test_unparseable_drafts_are_handled_not_crashed() -> None:
+    """Hints are offered on unfinished work, so half-written code is the normal case."""
+    from app.mastery.misconceptions import analyse_draft, hints_for
+
+    facts = analyse_draft("def broken(:\n    this is not python")
+    assert facts.parses is False and facts.recursive is False
+    assert hints_for("functions", "def broken(:")  # still returns a usable ladder

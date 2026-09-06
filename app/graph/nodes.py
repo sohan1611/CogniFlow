@@ -57,7 +57,7 @@ from app.models.schemas import (
     SkillNode,
 )
 from app.services.events import EventType
-from app.mastery.misconceptions import detect
+from app.mastery.misconceptions import detect, student_note_for
 from app.tools.sandbox.classifier import classify_with_expectation
 from app.tools.sandbox.runner import run_test_cases
 
@@ -680,7 +680,10 @@ def make_analyze_misconception(deps: GraphDeps) -> Node:
                 },
             ],
         }
-        note = found.student_note if found is not None else analysis.misconception
+        # The wording follows the code they actually wrote, not the pattern's name.
+        note = (
+            student_note_for(found, code) if found is not None else analysis.misconception
+        )
         if note:
             grade = dict(state.get("grader_result") or {})
             grade["feedback"] = note
