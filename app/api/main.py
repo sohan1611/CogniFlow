@@ -20,6 +20,7 @@ change to this file alone.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -55,17 +56,34 @@ SKILLS_CONFIG = "app/config/skills.yaml"
 # is a coin flip, and the failure it produces -- an empty index -- is silent.
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# Set once the curriculum index is usable. Anything that needs grounded retrieval waits
+# on this; nothing else does.
+#
+# It starts SET, and only the lifespan clears it. That asymmetry is deliberate: a waiter
+# should block only when something is actually going to set the event later, and the
+# lifespan is the only thing that starts the indexing thread. Importing this module
+# without running the lifespan -- which is what the tests and any embedding caller do --
+# must not make every request sit out a three-minute timeout for work nobody started.
+INDEX_READY = threading.Event()
+INDEX_READY.set()
+INDEX_STATUS = "ready"
 
-@asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    """Index the curriculum once per container, before any request is served.
 
-    A deployed host starts from a clean checkout with no `data/chroma`, and retrieval
+def _index_corpus() -> None:
+    """Index the curriculum if the deployed image did not ship an index.
+
+    A deployed host can start from a clean checkout with no `data/chroma`, and retrieval
     against an empty index does not raise -- it returns nothing, and every generated
     exercise quietly loses its grounding. The Streamlit UI has bootstrapped since its
     first commit; the API did not, which would have made "grounded in the functions
     chapter" false on the very first deployment while everything still appeared to work.
+
+    Normally this is a no-op: the build step ingests the corpus so the index ships inside
+    the image. It stays here because the build step is host configuration, and the one
+    thing this must not depend on is a host being configured correctly.
     """
+    global INDEX_STATUS
+
     from app.rag.ingest import ingest_corpus
     from app.rag.store import VectorStore
 
@@ -73,11 +91,36 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         store = VectorStore()
         if store.count() == 0:
             ingest_corpus(REPO_ROOT / "data" / "knowledge", store=store)
+        INDEX_STATUS = "ready"
         print(f"[bootstrap] corpus chunks indexed: {store.count()}", flush=True)
-    except Exception as exc:  # noqa: BLE001 - never block startup on the index
+    except Exception as exc:  # noqa: BLE001 - never take the service down over the index
         # Degraded retrieval is survivable; a service that refuses to boot is not.
+        INDEX_STATUS = f"failed: {exc}"
         print(f"[bootstrap] corpus indexing failed: {exc}", flush=True)
+    finally:
+        # Set unconditionally. A waiter must be released by failure as surely as by
+        # success -- an index that will never arrive must not hold a request forever.
+        INDEX_READY.set()
 
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Bind the port first; index behind it.
+
+    Doing the indexing inline here cost a deployment: uvicorn does not open the port
+    until startup returns, so a first boot that downloads an 80MB embedding model and
+    embeds the corpus looks, from outside, exactly like a service that never came up.
+    The host's port scan gives up, and the deploy fails with a perfectly healthy process
+    sat there embedding chunks.
+
+    So the work runs on a thread and readiness is a signal rather than a precondition.
+    Only the endpoints that actually need grounded retrieval wait for it.
+    """
+    global INDEX_STATUS
+
+    INDEX_STATUS = "indexing"
+    INDEX_READY.clear()
+    threading.Thread(target=_index_corpus, name="corpus-index", daemon=True).start()
     yield
 
 
@@ -213,6 +256,9 @@ def health() -> dict[str, Any]:
         "status": "ok",
         "providers": reachable,
         "generation": "live" if reachable else "deterministic-templates",
+        # Reported, not hidden. Retrieval that is still warming up is a real state of
+        # this service, and a state the frontend is entitled to see.
+        "corpus": INDEX_STATUS,
     }
 
 
@@ -324,6 +370,13 @@ def diagnostic_answer(student_id: str, answer: DiagnosticAnswer) -> dict[str, An
 def begin_tutoring(student_id: str, req: StartRequest) -> dict[str, Any]:
     """Run the graph until it suspends waiting for the student."""
     session = _session(student_id)
+
+    # The one place grounding is actually about to be used. Waiting here on a cold
+    # container is a slower first problem; NOT waiting is an ungrounded one, and an
+    # ungrounded problem is indistinguishable from a grounded one until a judge asks
+    # which page it came from.
+    INDEX_READY.wait(timeout=180)
+
     session.state = session.graph.invoke(
         initial_state(student_id, f"api-{student_id}", target_skill=req.target_skill),
         session.cfg,

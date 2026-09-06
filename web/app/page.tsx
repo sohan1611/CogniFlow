@@ -31,6 +31,7 @@ export default function Page() {
   const [id, setId] = useState("");
   const [health, setHealth] = useState<Health | null>(null);
   const [reachable, setReachable] = useState<boolean | null>(null);
+  const [waking, setWaking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,13 +49,40 @@ export default function Page() {
     // Checked once, up front. A student clicking Start and getting a raw fetch error is
     // told nothing they can act on; a deployment whose engine is unset or asleep should
     // say which, before they have typed anything.
-    api
-      .health()
-      .then((h) => {
-        setHealth(h);
-        setReachable(true);
-      })
-      .catch(() => setReachable(false));
+    //
+    // The retries are not defensive padding. The engine runs on a free tier that
+    // suspends itself after fifteen idle minutes and answers the first request with a
+    // 502 while it boots, so a single probe would report a perfectly healthy service as
+    // dead to whoever happens to arrive first -- which, for a link sent to judges, is
+    // exactly who arrives first.
+    let cancelled = false;
+    const slow = window.setTimeout(() => {
+      if (!cancelled) setWaking(true);
+    }, 2500);
+
+    const probe = (attemptsLeft: number): void => {
+      api
+        .health()
+        .then((h) => {
+          if (cancelled) return;
+          setHealth(h);
+          setReachable(true);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          if (attemptsLeft > 0) {
+            window.setTimeout(() => probe(attemptsLeft - 1), 5000);
+            return;
+          }
+          setReachable(false);
+        });
+    };
+    probe(12);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(slow);
+    };
   }, []);
 
   const guard = useCallback(async (work: () => Promise<void>) => {
@@ -140,6 +168,14 @@ export default function Page() {
   // -------------------------------------------------------------- render
   return (
     <Shell tab={tab} onTab={changeTab} name={stage === "name" ? null : name} sweeping={sweeping}>
+      {reachable === null && waking && (
+        <div className="note">
+          <strong>Waking the tutoring engine</strong>
+          It sleeps when nobody is using it and takes up to a minute to come back. This
+          page will start on its own once it answers.
+        </div>
+      )}
+
       {reachable === false && (
         <div className="note warn">
           <strong>The tutoring engine is not reachable</strong>
@@ -180,9 +216,15 @@ export default function Page() {
           <button
             className="btn"
             onClick={begin}
-            disabled={busy || !name.trim() || reachable === false}
+            disabled={busy || !name.trim() || reachable !== true}
           >
-            {busy ? "Starting…" : reachable === false ? "Engine offline" : "Start"}
+            {busy
+              ? "Starting…"
+              : reachable === false
+                ? "Engine offline"
+                : reachable === null
+                  ? "Waking the engine…"
+                  : "Start"}
           </button>
         </div>
       )}

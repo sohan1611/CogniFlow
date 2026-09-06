@@ -8,10 +8,13 @@ meaning what they mean.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
 from app.api.main import SESSIONS, app
+from app.config.settings import get_settings
 
 
 @pytest.fixture
@@ -198,3 +201,59 @@ def test_hints_follow_the_draft(client: TestClient) -> None:
         json={"code": "def add(a, b):\n    print(a + b)"},
     ).json()["hints"]
     assert recursive != printing, "the same ladder was offered for different mistakes"
+
+
+def test_startup_indexes_the_corpus_without_blocking_the_port(tmp_path, monkeypatch) -> None:
+    """A deployed host starts from a checkout with no index, and empty retrieval is
+    silent -- it returns nothing and every problem quietly loses its grounding.
+
+    This asserts both halves of the fix: the corpus IS indexed on startup, and startup
+    RETURNS before that finishes. The second half is not fussiness -- uvicorn does not
+    open the port until the lifespan yields, so indexing inline made a healthy process
+    look, to the host's port scan, exactly like one that never came up. That cost a
+    deploy.
+    """
+    import app.api.main as api
+    from app.rag.store import VectorStore
+
+    monkeypatch.setattr(api, "REPO_ROOT", Path.cwd())
+    monkeypatch.setenv("COGNIFLOW_CHROMA_PATH", str(tmp_path / "chroma"))
+    get_settings.cache_clear()
+
+    try:
+        with TestClient(app) as client:
+            # The port is open the moment the context manager returns, whatever the
+            # indexing thread is still doing.
+            assert client.get("/health").status_code == 200
+
+            assert api.INDEX_READY.wait(timeout=180), "the index never resolved"
+            assert api.INDEX_STATUS == "ready", api.INDEX_STATUS
+            assert VectorStore().count() > 0, "startup left retrieval empty"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_a_failed_index_still_releases_whoever_is_waiting() -> None:
+    """The gate must open on failure as surely as on success.
+
+    An index that will never arrive is survivable. A request that waits forever for one
+    is not, and this is the path where that would happen.
+    """
+    import app.api.main as api
+
+    import app.rag.store as store_module
+
+    def explode(*_a, **_k):
+        raise RuntimeError("no disk")
+
+    api.INDEX_READY.clear()
+    monkey = pytest.MonkeyPatch()
+    try:
+        monkey.setattr(store_module, "VectorStore", explode)
+        api._index_corpus()
+        assert api.INDEX_READY.is_set(), "a waiter would have hung here forever"
+        assert api.INDEX_STATUS.startswith("failed"), api.INDEX_STATUS
+    finally:
+        monkey.undo()
+        api.INDEX_STATUS = "ready"
+        api.INDEX_READY.set()
