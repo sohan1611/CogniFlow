@@ -307,6 +307,63 @@ def current(student_id: str) -> dict[str, Any]:
     return _view(_session(student_id))
 
 
+@app.get("/student/{student_id}/plan")
+def learning_plan(student_id: str) -> dict[str, Any]:
+    """The learning plan: every skill, its state, and what it is waiting on.
+
+    The STATE is decided here rather than in a client. Whether a skill is locked is a
+    prerequisite judgement, and prerequisite judgements are the entire subject of this
+    system -- a frontend recomputing them would be a second, silently diverging
+    implementation of the one thing that must not have two.
+    """
+    store = StudentStore()
+    if not store.exists(student_id):
+        raise HTTPException(404, f"no student {student_id!r}")
+
+    nodes = store.load_skills(student_id)
+    graph = SkillGraph(nodes)
+    plan: list[dict[str, Any]] = []
+    for name in sorted(nodes):
+        node = nodes[name]
+        blocking = graph.unmastered_prerequisites(name, MASTERY_THRESHOLD)
+        if node.mastery >= MASTERY_THRESHOLD:
+            state = "completed"
+        elif blocking:
+            state = "locked"
+        else:
+            state = "available"
+        plan.append(
+            {
+                "skill": name,
+                "state": state,
+                "mastery": round(node.mastery, 4),
+                "confidence": round(node.confidence, 4),
+                "attempts": node.attempts,
+                "prerequisites": graph.prerequisites(name),
+                "blocked_by": blocking,
+                "unlocks": graph.dependents(name),
+                "misconceptions": node.misconceptions,
+                "overcome": node.resolved_misconceptions,
+            }
+        )
+
+    # Where a student should go next: the weakest thing they can actually start. Not the
+    # weakest overall, which is usually something locked three prerequisites deep.
+    startable = [item for item in plan if item["state"] == "available"]
+    suggested = min(startable, key=lambda i: i["mastery"])["skill"] if startable else None
+
+    return {
+        "student_id": student_id,
+        "suggested_next": suggested,
+        "counts": {
+            "total": len(plan),
+            "done": sum(1 for i in plan if i["state"] == "completed"),
+            "upcoming": sum(1 for i in plan if i["state"] != "completed"),
+        },
+        "skills": plan,
+    }
+
+
 @app.get("/student/{student_id}/progress")
 def progress(student_id: str) -> dict[str, Any]:
     """Durable state, readable without an active session -- this is the dashboard."""

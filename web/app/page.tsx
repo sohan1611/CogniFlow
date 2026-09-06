@@ -1,13 +1,12 @@
 "use client";
 
 /**
- * The whole student experience, as a small state machine.
+ * The student experience, as a small state machine behind glass.
  *
- *   name  ->  diagnostic  ->  tutoring  ->  progress
+ *   name -> diagnostic -> plan <-> learn <-> progress
  *
- * Every transition is driven by what the engine returns, never by a decision made
- * here. This component knows how to draw a problem; it does not know how a problem is
- * chosen, and it must not learn.
+ * Transitions are driven by what the engine returns. This component knows how to draw a
+ * problem; it does not know how a problem is chosen, and it must not learn.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -16,24 +15,31 @@ import {
   api,
   type DiagnosticStep,
   type Health,
+  type Plan,
   type Progress,
   type TutorView,
 } from "@/lib/api";
+import { LearningPlan } from "./plan";
+import { Shell, type Tab, useGlassSwap } from "./shell";
 
-type Stage = "name" | "diagnostic" | "tutoring" | "progress";
+type Stage = "name" | "diagnostic" | "app";
 
 export default function Page() {
   const [stage, setStage] = useState<Stage>("name");
+  const [tab, setTab] = useState<Tab>("plan");
   const [name, setName] = useState("");
-  const [studentId, setStudentId] = useState("");
+  const [id, setId] = useState("");
   const [health, setHealth] = useState<Health | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [step, setStep] = useState<DiagnosticStep | null>(null);
+  const [plan, setPlan] = useState<Plan | null>(null);
   const [view, setView] = useState<TutorView | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [code, setCode] = useState("");
+
+  const { swap, sweeping } = useGlassSwap();
 
   useEffect(() => {
     api.health().then(setHealth).catch(() => setHealth(null));
@@ -51,62 +57,66 @@ export default function Page() {
     }
   }, []);
 
-  // ------------------------------------------------------------- actions
+  // -------------------------------------------------------------- actions
   const begin = () =>
     guard(async () => {
       const session = await api.startSession(name);
-      setStudentId(session.student_id);
+      setId(session.student_id);
       if (session.needs_diagnostic) {
-        setStep(await api.diagnosticQuestion(session.student_id));
-        setCode("");
-        setStage("diagnostic");
+        const first = await api.diagnosticQuestion(session.student_id);
+        setStep(first);
+        setCode(first.complete ? "" : first.starter_code);
+        swap(() => setStage("diagnostic"));
       } else {
-        const next = await api.beginTutoring(session.student_id, name);
-        setView(next);
-        setCode(next.problem?.starter_code ?? "");
-        setStage("tutoring");
+        setPlan(await api.plan(session.student_id));
+        swap(() => setStage("app"));
       }
     });
 
-  const answerDiagnostic = (submitted: string) =>
+  const answer = (submitted: string) =>
     guard(async () => {
       if (!step || step.complete) return;
-      await api.answerDiagnostic(studentId, step.skill, submitted);
-      const next = await api.diagnosticQuestion(studentId);
+      await api.answerDiagnostic(id, step.skill, submitted);
+      const next = await api.diagnosticQuestion(id);
       setStep(next);
       setCode(next.complete ? "" : next.starter_code);
     });
 
-  const startTutoring = () =>
+  const enterApp = () =>
     guard(async () => {
-      const next = await api.beginTutoring(studentId, name);
+      setPlan(await api.plan(id));
+      swap(() => {
+        setStage("app");
+        setTab("plan");
+      });
+    });
+
+  const startSkill = (skill: string) =>
+    guard(async () => {
+      const next = await api.beginTutoring(id, name, skill);
       setView(next);
       setCode(next.problem?.starter_code ?? "");
-      setStage("tutoring");
+      swap(() => setTab("learn"));
     });
 
   const submit = () =>
     guard(async () => {
-      const next = await api.submit(studentId, code);
+      const next = await api.submit(id, code);
       setView(next);
       setCode(next.problem?.starter_code ?? "");
+      setPlan(await api.plan(id)); // mastery moved, so the plan did too
     });
 
-  const showProgress = () =>
+  const changeTab = (next: Tab) =>
     guard(async () => {
-      setProgress(await api.progress(studentId));
-      setStage("progress");
+      if (next === "plan") setPlan(await api.plan(id));
+      if (next === "progress") setProgress(await api.progress(id));
+      swap(() => setTab(next));
     });
 
-  // ------------------------------------------------------------- render
+  // -------------------------------------------------------------- render
   return (
-    <>
-      <h1>CogniFlow</h1>
-      <p className="lede">
-        A tutor that changes its own objective when it works out <em>why</em> you are
-        failing.
-      </p>
-
+    <Shell tab={tab} onTab={changeTab} name={stage === "name" ? null : name} sweeping={sweeping}>
       {health && health.generation !== "live" && (
         <div className="note warn">
           <strong>Running on built-in templates</strong>
@@ -117,229 +127,218 @@ export default function Page() {
       {error && <p className="err">{error}</p>}
 
       {stage === "name" && (
-        <div className="card">
-          <label htmlFor="name">What should I call you?</label>
+        <div style={{ maxWidth: 460, margin: "8vh auto 0" }}>
+          <h1>Let&apos;s begin</h1>
+          <p className="sub" style={{ marginBottom: 22 }}>
+            A tutor that changes its own objective when it works out <em>why</em> you are
+            failing.
+          </p>
+          <label htmlFor="nm">What should I call you?</label>
           <input
-            id="name"
+            id="nm"
             type="text"
             value={name}
             placeholder="e.g. Aarav"
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && name.trim() && begin()}
           />
-          <p className="muted" style={{ margin: ".6rem 0 1rem" }}>
+          <p className="muted" style={{ margin: ".7rem 0 1.2rem" }}>
             Used to remember what you know between visits. Nothing else is stored.
           </p>
-          <button onClick={begin} disabled={busy || !name.trim()}>
+          <button className="btn" onClick={begin} disabled={busy || !name.trim()}>
             {busy ? "Starting…" : "Start"}
           </button>
         </div>
       )}
 
       {stage === "diagnostic" && step && !step.complete && (
-        <div className="card">
-          <div className="spread">
-            <h2 style={{ margin: 0 }}>Quick check</h2>
-            <span className="pill">{step.skill}</span>
-          </div>
-          <p className="muted">
+        <div style={{ maxWidth: 720, margin: "0 auto" }}>
+          <h1>Quick check</h1>
+          <p className="sub">
             No grade here — getting one wrong just means we start there.
             {Object.keys(step.skipped).length > 0 &&
-              ` ${Object.keys(step.skipped).length} question(s) already skipped, because
-                you showed me the answer by missing what they build on.`}
+              ` ${Object.keys(step.skipped).length} question(s) already skipped: you showed me the answer by missing what they build on.`}
           </p>
-          <p style={{ whiteSpace: "pre-wrap" }}>{step.prompt}</p>
-          <textarea value={code} onChange={(e) => setCode(e.target.value)} spellCheck={false} />
-          <div className="row" style={{ marginTop: ".7rem" }}>
-            <button onClick={() => answerDiagnostic(code)} disabled={busy}>
-              {busy ? "Checking…" : "Submit"}
-            </button>
-            <button
-              className="secondary"
-              onClick={() => answerDiagnostic("")}
-              disabled={busy}
-            >
-              I don&apos;t know this one
-            </button>
+          <div className="card" style={{ marginTop: 18 }}>
+            <div className="top">
+              <h3>{step.skill.replace(/_/g, " ")}</h3>
+              <span className="chip">Question {step.answered + 1}</span>
+            </div>
+            <p className="desc" style={{ whiteSpace: "pre-wrap" }}>{step.prompt}</p>
+            <textarea value={code} onChange={(e) => setCode(e.target.value)} spellCheck={false} />
+            <div className="row" style={{ marginTop: 12 }}>
+              <button className="btn" onClick={() => answer(code)} disabled={busy}>
+                {busy ? "Checking…" : "Submit"}
+              </button>
+              <button className="btn ghost" onClick={() => answer("")} disabled={busy}>
+                I don&apos;t know this one
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {stage === "diagnostic" && step?.complete && (
-        <div className="card">
-          <h2 style={{ marginTop: 0 }}>Here is what I found</h2>
-          <p>
-            <strong>Start here:</strong>{" "}
-            {step.weakest_skill ?? "nothing — you are ahead of this course"}
+        <div style={{ maxWidth: 720, margin: "0 auto" }}>
+          <h1>Here is what I found</h1>
+          <div className="card">
+            <p>
+              <strong>Start here:</strong>{" "}
+              {step.weakest_skill?.replace(/_/g, " ") ?? "nothing — you are ahead of this course"}
+            </p>
             {step.missing_prerequisites.length > 0 && (
-              <>
-                <br />
-                <strong>Gaps underneath it:</strong>{" "}
-                {step.missing_prerequisites.join(", ")}
-              </>
+              <p className="sub">
+                Gaps underneath it: {step.missing_prerequisites.join(", ")}
+              </p>
             )}
-            <br />
-            <span className="muted">
+            <p className="muted">
               Confidence in this picture: {(step.confidence * 100).toFixed(0)}%
-            </span>
-          </p>
-          <MasteryList mastery={step.mastery} highlight={step.weakest_skill} />
-          <button onClick={startTutoring} disabled={busy} style={{ marginTop: ".8rem" }}>
-            Start learning
-          </button>
+            </p>
+            <button className="btn" onClick={enterApp} disabled={busy} style={{ marginTop: 10 }}>
+              See my plan
+            </button>
+          </div>
         </div>
       )}
 
-      {stage === "tutoring" && view && <Tutor view={view} code={code} setCode={setCode} onSubmit={submit} onProgress={showProgress} busy={busy} />}
-
-      {stage === "progress" && progress && (
-        <ProgressPanel progress={progress} onBack={() => setStage("tutoring")} />
+      {stage === "app" && tab === "plan" && plan && (
+        <LearningPlan
+          plan={plan}
+          events={view?.events ?? []}
+          activeSkill={view?.awaiting_student ? view.target_skill : null}
+          onStart={startSkill}
+          busy={busy}
+        />
       )}
-    </>
+
+      {stage === "app" && tab === "learn" && (
+        <Learn view={view} code={code} setCode={setCode} onSubmit={submit} busy={busy} />
+      )}
+
+      {stage === "app" && tab === "progress" && progress && (
+        <ProgressView progress={progress} />
+      )}
+    </Shell>
   );
 }
 
-function MasteryList({
-  mastery,
-  highlight,
-}: {
-  mastery: Record<string, number>;
-  highlight?: string | null;
-}) {
-  const rows = Object.entries(mastery).sort((a, b) => a[1] - b[1]);
-  return (
-    <div>
-      {rows.map(([skill, value]) => (
-        <div className="skill" key={skill}>
-          <div className="spread">
-            <span style={{ fontWeight: skill === highlight ? 700 : 400 }}>{skill}</span>
-            <span className="muted">{value.toFixed(2)}</span>
-          </div>
-          <div className="bar">
-            <span style={{ width: `${Math.max(0, Math.min(1, value)) * 100}%` }} />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function Tutor({
+function Learn({
   view,
   code,
   setCode,
   onSubmit,
-  onProgress,
   busy,
 }: {
-  view: TutorView;
+  view: TutorView | null;
   code: string;
   setCode: (v: string) => void;
   onSubmit: () => void;
-  onProgress: () => void;
   busy: boolean;
 }) {
+  if (!view) {
+    return (
+      <div style={{ maxWidth: 620, margin: "6vh auto", textAlign: "center" }}>
+        <h1>Nothing in progress</h1>
+        <p className="sub">Pick a skill from your learning plan to begin.</p>
+      </div>
+    );
+  }
   const fb = view.feedback;
   return (
-    <>
-      {/* Our failure is never shown as the student's mistake. */}
-      {fb?.was_our_fault && (
-        <div className="note ours">
-          <strong>Something on our side went wrong</strong>
-          Your submission and your progress have been preserved, and nothing was counted
-          against you.
-        </div>
-      )}
-      {fb && !fb.was_our_fault && fb.passed && (
-        <div className="note good">
-          <strong>Correct</strong>
-          {fb.score != null && `Passed every test case (${(fb.score * 100).toFixed(0)}%).`}
-        </div>
-      )}
-      {fb && !fb.was_our_fault && fb.passed === false && fb.message && (
-        <div className="note warn">
-          <strong>Not quite — but the mistake is a useful one</strong>
-          {fb.message}
-        </div>
-      )}
-
-      {/* The redirect, explained. Without this it reads as the tutor changing the
-          subject for no reason -- which is the opposite of the point. */}
-      {view.returning_to && view.returning_to !== view.target_skill && (
-        <div className="note">
-          <strong>Let&apos;s back up for a moment</strong>
-          We&apos;re working on <b>{view.target_skill}</b> first, then going straight back
-          to <b>{view.returning_to}</b> — that is still what you came here for, and it has
-          not been forgotten.
-        </div>
-      )}
-
-      {view.problem && view.awaiting_student ? (
-        <div className="card">
-          <div className="spread">
-            <h2 style={{ margin: 0 }}>{view.problem.title}</h2>
-            <span className="pill">{view.difficulty}</span>
+    <div className="columns">
+      <section>
+        {/* Our failure is never shown as the student's mistake. */}
+        {fb?.was_our_fault && (
+          <div className="note ours">
+            <strong>Something on our side went wrong</strong>
+            Your submission and your progress have been preserved, and nothing was
+            counted against you.
           </div>
-          <p style={{ whiteSpace: "pre-wrap" }}>{view.problem.prompt}</p>
-          {view.problem.expected_output && (
-            <p className="muted">
-              Expected output: <code>{view.problem.expected_output}</code>
-            </p>
-          )}
-          <textarea value={code} onChange={(e) => setCode(e.target.value)} spellCheck={false} />
-          <div className="row" style={{ marginTop: ".7rem" }}>
-            <button onClick={onSubmit} disabled={busy}>
-              {busy ? "Running…" : "Submit"}
-            </button>
-            <button className="secondary" onClick={onProgress} disabled={busy}>
-              My progress
-            </button>
+        )}
+        {fb && !fb.was_our_fault && fb.passed && (
+          <div className="note good">
+            <strong>Correct</strong>
+            {fb.score != null && `Passed every test case (${(fb.score * 100).toFixed(0)}%).`}
           </div>
-          {view.problem.grounded_in.length > 0 && (
-            <p className="muted" style={{ marginTop: ".8rem", marginBottom: 0 }}>
-              Based on: {view.problem.grounded_in.join(", ")}
-            </p>
-          )}
-        </div>
-      ) : (
-        <div className="card">
-          <h2 style={{ marginTop: 0 }}>Session {view.session_status ?? "finished"}</h2>
-          {view.recommended_next && (
-            <p>
-              <strong>Recommended next:</strong> <code>{view.recommended_next}</code>
-            </p>
-          )}
-          <button className="secondary" onClick={onProgress}>
-            My progress
-          </button>
-        </div>
-      )}
-
-      <h2>What the tutor believes</h2>
-      <div className="card">
-        <MasteryList mastery={view.mastery} highlight={view.target_skill} />
-      </div>
-
-      <h2>Why it did that</h2>
-      <div className="card events">
-        {view.events.slice(-12).map((event, i) => (
-          <div key={i}>
-            <b>{event.type}</b> {event.node}
-            {event.reason && <> — {event.reason}</>}
+        )}
+        {fb && !fb.was_our_fault && fb.passed === false && fb.message && (
+          <div className="note warn">
+            <strong>Not quite — but the mistake is a useful one</strong>
+            {fb.message}
           </div>
-        ))}
-      </div>
-    </>
+        )}
+
+        {/* The redirect, explained. Without this it reads from the student's side as
+            the tutor changing the subject for no reason. */}
+        {view.returning_to && view.returning_to !== view.target_skill && (
+          <div className="note info">
+            <strong>Let&apos;s back up for a moment</strong>
+            We&apos;re working on <b>{view.target_skill}</b> first, then going straight
+            back to <b>{view.returning_to}</b> — that is still what you came here for.
+          </div>
+        )}
+
+        {view.problem && view.awaiting_student ? (
+          <div className="card">
+            <div className="top">
+              <h3>{view.problem.title}</h3>
+              <span className="chip">{view.difficulty}</span>
+            </div>
+            <p className="desc" style={{ whiteSpace: "pre-wrap" }}>{view.problem.prompt}</p>
+            {view.problem.expected_output && (
+              <p className="muted">
+                Expected output: <code>{view.problem.expected_output}</code>
+              </p>
+            )}
+            <textarea value={code} onChange={(e) => setCode(e.target.value)} spellCheck={false} />
+            <div className="row" style={{ marginTop: 12 }}>
+              <button className="btn" onClick={onSubmit} disabled={busy}>
+                {busy ? "Running…" : "Submit"}
+              </button>
+            </div>
+            {view.problem.grounded_in.length > 0 && (
+              <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
+                Based on: {view.problem.grounded_in.join(", ")}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="card">
+            <h3>Session {view.session_status ?? "finished"}</h3>
+            {view.recommended_next && (
+              <p className="sub">
+                Recommended next: <code>{view.recommended_next}</code>
+              </p>
+            )}
+          </div>
+        )}
+      </section>
+
+      <aside className="panel">
+        <div className="head">
+          <h2>What the tutor believes</h2>
+        </div>
+        {Object.entries(view.mastery)
+          .sort((a, b) => a[1] - b[1])
+          .map(([skill, value]) => (
+            <div key={skill} style={{ marginBottom: 12 }}>
+              <div className="spread">
+                <span style={{ fontWeight: skill === view.target_skill ? 700 : 400 }}>
+                  {skill.replace(/_/g, " ")}
+                </span>
+                <span className="muted">{value.toFixed(2)}</span>
+              </div>
+              <div className="bar">
+                <span style={{ width: `${Math.min(1, value) * 100}%` }} />
+              </div>
+            </div>
+          ))}
+      </aside>
+    </div>
   );
 }
 
-function ProgressPanel({
-  progress,
-  onBack,
-}: {
-  progress: Progress;
-  onBack: () => void;
-}) {
+function ProgressView({ progress }: { progress: Progress }) {
   const overcome = progress.skills.flatMap((s) =>
     s.overcome.map((m) => ({ skill: s.skill, text: m })),
   );
@@ -347,53 +346,64 @@ function ProgressPanel({
     s.misconceptions.map((m) => ({ skill: s.skill, text: m })),
   );
   return (
-    <>
-      <div className="card">
-        <div className="spread">
-          <h2 style={{ margin: 0 }}>Progress</h2>
-          <span className="muted">
-            {(progress.overall_mastery * 100).toFixed(0)}% overall ·{" "}
-            {progress.total_attempts} attempts
-          </span>
+    <div className="columns">
+      <section>
+        <h1>Progress</h1>
+        <div className="toolbar">
+          <div className="stat">
+            <b>{(progress.overall_mastery * 100).toFixed(0)}%</b>
+            <span>OVERALL</span>
+          </div>
+          <div className="stat">
+            <b>{progress.total_attempts}</b>
+            <span>ATTEMPTS</span>
+          </div>
+          <div className="stat done">
+            <b>{overcome.length}</b>
+            <span>OVERCOME</span>
+          </div>
         </div>
-      </div>
 
-      {(overcome.length > 0 || active.length > 0) && (
-        <>
-          <h2>Misconceptions</h2>
-          <div className="card">
+        {(overcome.length > 0 || active.length > 0) && (
+          <>
+            <h2 style={{ margin: "10px 0 12px" }}>Misconceptions</h2>
             {overcome.map((m, i) => (
               <div className="note good" key={`o${i}`}>
-                <strong>Overcome · {m.skill}</strong>
+                <strong>Overcome · {m.skill.replace(/_/g, " ")}</strong>
                 {m.text}
               </div>
             ))}
             {active.map((m, i) => (
               <div className="note warn" key={`a${i}`}>
-                <strong>Still working on · {m.skill}</strong>
+                <strong>Still working on · {m.skill.replace(/_/g, " ")}</strong>
                 {m.text}
               </div>
             ))}
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </section>
 
-      <h2>Recent activity</h2>
-      <div className="card events">
+      <aside className="panel">
+        <div className="head">
+          <h2>Recent activity</h2>
+        </div>
         {progress.recent_attempts.length === 0 && (
-          <div>No attempts recorded yet.</div>
+          <div className="event plain">
+            <p>No attempts recorded yet.</p>
+          </div>
         )}
         {progress.recent_attempts.map((a, i) => (
-          <div key={i}>
-            <b>{a.skill}</b> {a.outcome} — {a.mastery_before.toFixed(2)} →{" "}
-            {a.mastery_after.toFixed(2)}
+          <div className={`event ${a.outcome === "CORRECT" ? "leaf" : "butter"}`} key={i}>
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <span className="kind">{a.skill.replace(/_/g, " ")}</span>
+              <span className="when">
+                {a.mastery_before.toFixed(2)} → {a.mastery_after.toFixed(2)}
+              </span>
+            </div>
+            <p>{a.outcome.replace(/_/g, " ").toLowerCase()}</p>
           </div>
         ))}
-      </div>
-
-      <button className="secondary" onClick={onBack} style={{ marginTop: "1rem" }}>
-        Back to learning
-      </button>
-    </>
+      </aside>
+    </div>
   );
 }

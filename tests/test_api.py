@@ -128,3 +128,39 @@ def _solution(skill: str) -> str:
         "loops": "t = 0\nfor i in range(1, 5):\n    t += i\nprint(t)",
         "nested_loops": "c = 0\nfor i in range(1,4):\n    for j in range(1,4):\n        c += 1\nprint(c)",
     }.get(skill, "print('unknown')")
+
+
+def test_plan_states_come_from_the_engine_not_the_client(client: TestClient) -> None:
+    """Whether a skill is locked is a prerequisite judgement, and this system exists to
+    make prerequisite judgements. A client recomputing it would be a second, silently
+    diverging implementation of the one thing that must not have two.
+    """
+    client.post("/session", json={"name": "Aarav"})
+    body = client.get("/student/aarav/plan").json()
+
+    states = {s["skill"]: s for s in body["skills"]}
+    assert set(states) == {s["skill"] for s in client.get("/skills").json()["skills"]}
+    for item in states.values():
+        assert item["state"] in {"completed", "locked", "available"}
+        if item["state"] == "locked":
+            assert item["blocked_by"], "a locked skill must say what is blocking it"
+        if item["state"] == "available":
+            assert not item["blocked_by"]
+
+    assert body["counts"]["total"] == len(states)
+    assert body["counts"]["done"] + body["counts"]["upcoming"] == body["counts"]["total"]
+
+
+def test_suggested_next_is_startable_not_merely_weakest(client: TestClient) -> None:
+    """The weakest skill overall is usually locked three prerequisites deep. Sending a
+    student at it is the exact mistake the project is about."""
+    client.post("/session", json={"name": "Aarav"})
+    body = client.get("/student/aarav/plan").json()
+    suggested = body["suggested_next"]
+    if suggested is not None:
+        item = next(s for s in body["skills"] if s["skill"] == suggested)
+        assert item["state"] == "available"
+
+
+def test_plan_for_an_unknown_student_is_404(client: TestClient) -> None:
+    assert client.get("/student/ghost/plan").status_code == 404
