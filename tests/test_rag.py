@@ -250,3 +250,36 @@ def test_empty_collection_query_returns_empty_list(tmp_path: Path) -> None:
     store = VectorStore(path=tmp_path / "chroma")
 
     assert store.query("anything", k=4) == []
+
+
+def test_the_committed_index_matches_the_committed_corpus() -> None:
+    """data/chroma is checked in, and a checked-in derived artefact drifts.
+
+    It is committed for a real reason: the deployed engine runs on a free tier whose
+    disk does not survive a spin-down, so without a shipped index every wake re-downloads
+    an 80MB embedding model and re-embeds the whole curriculum -- close to four minutes
+    before a student sees anything. Shipping it costs 1.5MB and removes that entirely.
+
+    The cost is that adding a page to data/knowledge and forgetting to re-ingest would
+    leave the new material silently unretrievable, which is the exact failure mode this
+    project has been bitten by before: retrieval returning nothing raises nothing. So the
+    chunk ids are recomputed here from the corpus itself -- chunking is deterministic and
+    needs no embedding, so this is cheap -- and compared against what is stored.
+
+    If this fails, run: python scripts/ingest_corpus.py
+    """
+    from app.rag.chunker import chunk_document
+    from app.rag.documents import load_corpus
+    from app.rag.store import VectorStore
+
+    expected = {
+        chunk.chunk_id
+        for document in load_corpus(Path("data/knowledge"))
+        for chunk in chunk_document(document)
+    }
+    stored = VectorStore().chunk_ids()
+
+    missing = expected - stored
+    stale = stored - expected
+    assert not missing, f"corpus material that is not in the index: {sorted(missing)[:5]}"
+    assert not stale, f"index entries with no corpus behind them: {sorted(stale)[:5]}"

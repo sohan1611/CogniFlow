@@ -96,6 +96,16 @@ class VectorStore:
     def count(self) -> int:
         return int(self._collection.count())
 
+    def chunk_ids(self) -> set[str]:
+        """Every chunk id currently stored.
+
+        Exists so a test can tell a stale index from a current one. The index is
+        committed -- it has to be, or a free-tier host re-embeds the whole curriculum on
+        every cold start -- and a committed derived artefact drifts silently unless
+        something checks.
+        """
+        return set(self._collection.get(include=[])["ids"])
+
     def reset(self) -> None:
         self._client.delete_collection(self.COLLECTION)
         self._collection = self._client.get_or_create_collection(

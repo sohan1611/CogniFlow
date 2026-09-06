@@ -5,7 +5,14 @@ __pycache__/
 *.db
 *.sqlite
 *.sqlite3
-data/chroma/
+# data/chroma/ is COMMITTED, deliberately. It is a derived artefact and normally
+# would not be, but the deployed engine runs on a free tier whose disk does not
+# survive a spin-down: without a shipped index it re-downloads an 80MB embedding
+# model and re-embeds the whole curriculum on every wake, which measured at close
+# to four minutes before anyone can be shown a first problem. It is 1.5MB, it is
+# deterministic, and tests/test_rag.py fails if it drifts from data/knowledge.
+!data/chroma/
+!data/chroma/**
 data/cogniflow.db
 .cache/llm_replay/
 .pytest_cache/
