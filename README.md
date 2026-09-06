@@ -5,9 +5,23 @@
 Built for the Agentic AI Hackathon — Tech Zephyr 4.0, IIT Bhubaneswar.
 Team **BloodCoded**.
 
-**▶ Try it live: [cogni-flow.streamlit.app](https://cogni-flow.streamlit.app/)** — no
-install. *Watch the demo* replays the prerequisite redirect; *Be the student* runs a real
-session where the graph checkpoints and halts while you think.
+**▶ Try it live**
+
+| | |
+|---|---|
+| **[cogniflow-nine.vercel.app](https://cogniflow-nine.vercel.app/)** | The student app. Next.js on Vercel, talking to the graph over HTTP. |
+| **[cogni-flow.streamlit.app](https://cogni-flow.streamlit.app/)** | The instrumented view. *Watch the demo* replays the prerequisite redirect; *Be the student* runs a real session where the graph checkpoints and halts while you think. |
+| [cogniflow-engine.onrender.com/docs](https://cogniflow-engine.onrender.com/docs) | The engine's own API, if you would rather drive it directly. |
+
+Neither hosted link is the *proof* — `python run.py demo` is, because it runs the whole
+graph on your machine with nothing hidden. The links exist so nobody has to clone
+anything to see it work.
+
+> Both hosted services are on free tiers and sleep after fifteen idle minutes. The first
+> request wakes them, which takes about half a minute; the app says so rather than
+> looking broken. The engine's student database is on ephemeral disk, so progress
+> survives a session but not a redeploy — durable storage is a config swap
+> (`StudentStore` is interface-backed), not a rewrite.
 
 > The hosted app executes Python that visitors submit, so submissions pass a static
 > allowlist **before any process is created**. A refusal is reported as
