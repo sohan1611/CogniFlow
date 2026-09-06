@@ -180,6 +180,15 @@ export const api = {
       body: JSON.stringify({ code }),
     }),
 
+  /** Asking for help submits nothing and moves no mastery. The draft is sent
+   *  because an unfinished attempt says more about where someone is stuck than
+   *  the skill name does. */
+  hints: (id: string, code: string) =>
+    request<{ skill: string; hints: string[] }>(`/session/${id}/hints`, {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    }),
+
   plan: (id: string) => request<Plan>(`/student/${id}/plan`),
 
   progress: (id: string) => request<Progress>(`/student/${id}/progress`),

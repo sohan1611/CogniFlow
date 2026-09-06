@@ -20,7 +20,10 @@ change to this file alone.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -32,6 +35,7 @@ from app.graph.builder import build_graph
 from app.graph.deps import GraphDeps
 from app.graph.state import initial_state
 from app.llm.provider import Role, available_chain
+from app.mastery.misconceptions import hints_for
 from app.mastery.policy import MASTERY_THRESHOLD
 from app.mastery.skill_graph import SkillGraph
 from app.models.enums import StudentOutcome
@@ -45,10 +49,43 @@ from app.tools.sandbox.subprocess_sandbox import SubprocessSandbox
 
 SKILLS_CONFIG = "app/config/skills.yaml"
 
+# ----------------------------------------------------------------- startup
+# The repository root, resolved from this file rather than from the working directory.
+# A deployed host may start the process from anywhere; "data/knowledge" relative to CWD
+# is a coin flip, and the failure it produces -- an empty index -- is silent.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Index the curriculum once per container, before any request is served.
+
+    A deployed host starts from a clean checkout with no `data/chroma`, and retrieval
+    against an empty index does not raise -- it returns nothing, and every generated
+    exercise quietly loses its grounding. The Streamlit UI has bootstrapped since its
+    first commit; the API did not, which would have made "grounded in the functions
+    chapter" false on the very first deployment while everything still appeared to work.
+    """
+    from app.rag.ingest import ingest_corpus
+    from app.rag.store import VectorStore
+
+    try:
+        store = VectorStore()
+        if store.count() == 0:
+            ingest_corpus(REPO_ROOT / "data" / "knowledge", store=store)
+        print(f"[bootstrap] corpus chunks indexed: {store.count()}", flush=True)
+    except Exception as exc:  # noqa: BLE001 - never block startup on the index
+        # Degraded retrieval is survivable; a service that refuses to boot is not.
+        print(f"[bootstrap] corpus indexing failed: {exc}", flush=True)
+
+    yield
+
+
 app = FastAPI(
     title="CogniFlow API",
     version="1.0",
     description="Adaptive tutoring with prerequisite-aware remediation.",
+    lifespan=lifespan,
 )
 
 # The browser calling this will not share an origin with it. Wide open is correct for a
@@ -305,6 +342,22 @@ def submit(student_id: str, req: SubmitRequest) -> dict[str, Any]:
 @app.get("/session/{student_id}")
 def current(student_id: str) -> dict[str, Any]:
     return _view(_session(student_id))
+
+
+@app.post("/session/{student_id}/hints")
+def hints(student_id: str, req: SubmitRequest) -> dict[str, Any]:
+    """The hint ladder for whatever the student is stuck on, strongest last.
+
+    Takes their draft, because an unfinished attempt says more about where they are
+    stuck than the skill name does. Purely a read: asking for help submits nothing,
+    moves no mastery, and does not advance the graph -- a student who is afraid that
+    asking will cost them something will not ask.
+    """
+    session = _session(student_id)
+    snapshot = session.graph.get_state(session.cfg)
+    skill = str(snapshot.values.get("target_skill") or "")
+    ladder = hints_for(skill, req.code or None)
+    return {"skill": skill, "hints": list(ladder)}
 
 
 @app.get("/student/{student_id}/plan")

@@ -30,6 +30,7 @@ export default function Page() {
   const [name, setName] = useState("");
   const [id, setId] = useState("");
   const [health, setHealth] = useState<Health | null>(null);
+  const [reachable, setReachable] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,11 +39,22 @@ export default function Page() {
   const [view, setView] = useState<TutorView | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [code, setCode] = useState("");
+  const [hints, setHints] = useState<string[]>([]);
+  const [shown, setShown] = useState(0);
 
   const { swap, sweeping } = useGlassSwap();
 
   useEffect(() => {
-    api.health().then(setHealth).catch(() => setHealth(null));
+    // Checked once, up front. A student clicking Start and getting a raw fetch error is
+    // told nothing they can act on; a deployment whose engine is unset or asleep should
+    // say which, before they have typed anything.
+    api
+      .health()
+      .then((h) => {
+        setHealth(h);
+        setReachable(true);
+      })
+      .catch(() => setReachable(false));
   }, []);
 
   const guard = useCallback(async (work: () => Promise<void>) => {
@@ -96,6 +108,8 @@ export default function Page() {
       const next = await api.beginTutoring(id, name, skill);
       setView(next);
       setCode(next.problem?.starter_code ?? "");
+      setHints([]);
+      setShown(0);
       swap(() => setTab("learn"));
     });
 
@@ -104,7 +118,16 @@ export default function Page() {
       const next = await api.submit(id, code);
       setView(next);
       setCode(next.problem?.starter_code ?? "");
+      setHints([]);
+      setShown(0);
       setPlan(await api.plan(id)); // mastery moved, so the plan did too
+    });
+
+  const askForHint = () =>
+    guard(async () => {
+      const ladder = hints.length ? hints : (await api.hints(id, code)).hints;
+      setHints(ladder);
+      setShown((n) => Math.min(n + 1, ladder.length));
     });
 
   const changeTab = (next: Tab) =>
@@ -117,6 +140,15 @@ export default function Page() {
   // -------------------------------------------------------------- render
   return (
     <Shell tab={tab} onTab={changeTab} name={stage === "name" ? null : name} sweeping={sweeping}>
+      {reachable === false && (
+        <div className="note warn">
+          <strong>The tutoring engine is not reachable</strong>
+          This page is only the surface — the tutor itself runs as a separate service.
+          Nothing below will work until it is running and{" "}
+          <code>NEXT_PUBLIC_API_URL</code> points at it.
+        </div>
+      )}
+
       {health && health.generation !== "live" && (
         <div className="note warn">
           <strong>Running on built-in templates</strong>
@@ -145,8 +177,12 @@ export default function Page() {
           <p className="muted" style={{ margin: ".7rem 0 1.2rem" }}>
             Used to remember what you know between visits. Nothing else is stored.
           </p>
-          <button className="btn" onClick={begin} disabled={busy || !name.trim()}>
-            {busy ? "Starting…" : "Start"}
+          <button
+            className="btn"
+            onClick={begin}
+            disabled={busy || !name.trim() || reachable === false}
+          >
+            {busy ? "Starting…" : reachable === false ? "Engine offline" : "Start"}
           </button>
         </div>
       )}
@@ -212,7 +248,16 @@ export default function Page() {
       )}
 
       {stage === "app" && tab === "learn" && (
-        <Learn view={view} code={code} setCode={setCode} onSubmit={submit} busy={busy} />
+        <Learn
+          view={view}
+          code={code}
+          setCode={setCode}
+          onSubmit={submit}
+          onHint={askForHint}
+          hints={hints.slice(0, shown)}
+          exhausted={shown > 0 && shown >= hints.length}
+          busy={busy}
+        />
       )}
 
       {stage === "app" && tab === "progress" && progress && (
@@ -227,12 +272,18 @@ function Learn({
   code,
   setCode,
   onSubmit,
+  onHint,
+  hints,
+  exhausted,
   busy,
 }: {
   view: TutorView | null;
   code: string;
   setCode: (v: string) => void;
   onSubmit: () => void;
+  onHint: () => void;
+  hints: string[];
+  exhausted: boolean;
   busy: boolean;
 }) {
   if (!view) {
@@ -295,7 +346,23 @@ function Learn({
               <button className="btn" onClick={onSubmit} disabled={busy}>
                 {busy ? "Running…" : "Submit"}
               </button>
+              <button className="btn ghost" onClick={onHint} disabled={busy || exhausted}>
+                {exhausted ? "No more hints" : "I'm stuck — give me a hint"}
+              </button>
             </div>
+
+            {hints.map((hint, i) => (
+              <div className="note info" key={i} style={{ marginTop: 12 }}>
+                <strong>Hint {i + 1}</strong>
+                {hint}
+              </div>
+            ))}
+            {exhausted && (
+              <p className="muted" style={{ marginTop: 10 }}>
+                That&apos;s as much as I can give you without doing it for you — have a
+                go, and I&apos;ll tell you exactly what went wrong.
+              </p>
+            )}
             {view.problem.grounded_in.length > 0 && (
               <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
                 Based on: {view.problem.grounded_in.join(", ")}

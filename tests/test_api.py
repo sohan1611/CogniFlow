@@ -164,3 +164,37 @@ def test_suggested_next_is_startable_not_merely_weakest(client: TestClient) -> N
 
 def test_plan_for_an_unknown_student_is_404(client: TestClient) -> None:
     assert client.get("/student/ghost/plan").status_code == 404
+
+
+def test_hints_are_available_without_submitting_anything(client: TestClient) -> None:
+    """A student afraid that asking for help will cost them something will not ask."""
+    client.post("/session", json={"name": "Aarav"})
+    client.post("/session/aarav/start", json={"name": "Aarav", "target_skill": "recursion"})
+    before = client.get("/student/aarav/progress").json()
+
+    body = client.post(
+        "/session/aarav/hints",
+        json={"code": "def total(n):\n    return n + total(n - 1)"},
+    ).json()
+    assert body["hints"], "a hint button that produces nothing is worse than no button"
+    assert len(body["hints"]) >= 2, "help must be able to get stronger"
+
+    after = client.get("/student/aarav/progress").json()
+    assert after["total_attempts"] == before["total_attempts"], "asking cost an attempt"
+    assert after["skills"] == before["skills"], "asking moved mastery"
+
+
+def test_hints_follow_the_draft(client: TestClient) -> None:
+    """The ladder is chosen from what they have written, not only the skill name."""
+    client.post("/session", json={"name": "Aarav"})
+    client.post("/session/aarav/start", json={"name": "Aarav", "target_skill": "recursion"})
+
+    recursive = client.post(
+        "/session/aarav/hints",
+        json={"code": "def total(n):\n    return n + total(n - 1)"},
+    ).json()["hints"]
+    printing = client.post(
+        "/session/aarav/hints",
+        json={"code": "def add(a, b):\n    print(a + b)"},
+    ).json()["hints"]
+    assert recursive != printing, "the same ladder was offered for different mistakes"
