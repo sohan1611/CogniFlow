@@ -102,6 +102,11 @@ def ui() -> int:
     return sh(PY, "-m", "streamlit", "run", "ui.py")
 
 
+def api() -> int:
+    """the HTTP API over the graph - what a real frontend talks to"""
+    return sh(PY, "-m", "uvicorn", "app.api.main:app", "--reload", "--port", "8000")
+
+
 def scan() -> int:
     """enforce AGENTS.md RULE 1 before pushing"""
     return sh(PY, "scripts/check_contributors.py")
