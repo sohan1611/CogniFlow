@@ -257,3 +257,23 @@ def test_a_failed_index_still_releases_whoever_is_waiting() -> None:
         monkey.undo()
         api.INDEX_STATUS = "ready"
         api.INDEX_READY.set()
+
+
+@pytest.mark.parametrize(
+    ("origin", "allowed"),
+    [
+        ("https://cogniflow-sohanmandal1611-7709s-projects.vercel.app", True),
+        ("https://cogniflow-git-main-sohanmandal1611-7709s-projects.vercel.app", True),
+        ("http://localhost:3000", True),
+        ("https://evil-cogniflow.vercel.app", False),
+        ("https://cogniflow.vercel.app.attacker.example", False),
+    ],
+)
+def test_cors_admits_the_frontend_and_nothing_that_merely_resembles_it(
+    client: TestClient, origin: str, allowed: bool
+) -> None:
+    """Preview hostnames change on every push, so the allowlist has to be a pattern --
+    and a sloppy pattern that matches by substring would admit any host that contains
+    the project name."""
+    headers = client.get("/health", headers={"Origin": origin}).headers
+    assert ("access-control-allow-origin" in headers) is allowed, origin

@@ -131,12 +131,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# The browser calling this will not share an origin with it. Wide open is correct for a
-# service with no credentials and no user data beyond a self-chosen display name; the
-# moment either changes, this must narrow to the deployed frontend's origin.
+# The browser calling this will not share an origin with it: the UI is on Vercel, the
+# engine is not. The regex covers the project's production alias, its branch alias, and
+# the per-deploy preview hostnames, which change on every push and so cannot be listed.
+#
+# Worth being straight about what this does and does not buy. CORS is a browser policy,
+# not access control -- this API has no authentication, so anyone with curl can read any
+# student's progress by guessing a display name, and no origin list changes that. What
+# it does stop is an unrelated page a student has open reading their progress from their
+# browser. Real access control arrives with real accounts, and the day it does, this is
+# not the line that provides it.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origin_regex=r"https://cogniflow(-[a-z0-9-]+)?\.vercel\.app",
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
