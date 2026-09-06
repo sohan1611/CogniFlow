@@ -7,7 +7,8 @@ Three modes:
   Watch      replay the scripted prerequisite-redirect scenario, step by step.
   Be the     a real tutoring session where YOU are the student. This exercises the
   student   genuine LangGraph interrupt/resume cycle -- the graph checkpoints and halts
-            while you think, and resumes when you submit.
+            while you think, and resumes when you submit. A named newcomer is
+            DIAGNOSED first: the profile they start from is measured, not assumed.
   My progress
             review a named student's durable mastery and recent attempts.
 
@@ -32,6 +33,7 @@ from app.graph.state import initial_state  # noqa: E402
 from app.llm.provider import default_chain  # noqa: E402
 from app.mastery.misconceptions import hints_for  # noqa: E402
 from app.mastery.policy import MASTERY_THRESHOLD  # noqa: E402
+from app.mastery.skill_graph import SkillGraph  # noqa: E402
 from app.models.enums import StudentOutcome  # noqa: E402
 from app.rag.retriever import Retriever  # noqa: E402
 from app.services.demo_runner import (  # noqa: E402
@@ -40,8 +42,14 @@ from app.services.demo_runner import (  # noqa: E402
     run_demo,
     seed_student,
 )
+from app.services.diagnostic import (  # noqa: E402
+    QUESTIONS,
+    DiagnosticSession,
+)
 from app.services.events import EventLog, EventType  # noqa: E402
 from app.services.student_store import StudentStore, student_id_from_name  # noqa: E402
+from app.tools.sandbox.runner import run_test_cases  # noqa: E402
+from app.tools.sandbox.subprocess_sandbox import SubprocessSandbox  # noqa: E402
 
 st.set_page_config(page_title="CogniFlow", page_icon="🎓", layout="wide")
 
@@ -151,6 +159,75 @@ def mastery_table(scores: dict[str, float], highlight: str | None = None) -> Non
             f"{label} &nbsp; `{value:.3f}`", unsafe_allow_html=True
         )
         st.progress(min(max(value, 0.0), 1.0))
+
+
+def render_diagnostic(store: StudentStore, student_id: str, display_name: str) -> bool:
+    """Ask a newcomer what they know. Returns True once the profile has been written.
+
+    Renders one question at a time so the adaptive part is visible: answer functions
+    wrongly and the recursion questions never appear, because the prerequisite graph
+    already told us how they would go.
+    """
+    session: DiagnosticSession = st.session_state.get("diagnostic") or DiagnosticSession(
+        graph=SkillGraph.from_yaml("app/config/skills.yaml")
+    )
+    st.session_state["diagnostic"] = session
+
+    question = session.next_question()
+    if question is None:
+        nodes, result = session.finish(MASTERY_THRESHOLD)
+        store.save_skills(student_id, nodes)
+        st.success(f"Thanks, {display_name}. Here is what I found.")
+        st.markdown(
+            f"**Weakest skill:** `{result.target_skill or 'nothing - you are ahead of this course'}`"
+            + (
+                f"  \n**Gaps underneath it:** {', '.join(result.missing_prerequisites)}"
+                if result.missing_prerequisites
+                else ""
+            )
+            + f"  \n**Confidence in this picture:** {result.confidence:.0%}"
+            + (
+                f"  \n\n*{len(session.skipped)} question(s) skipped: you had already shown "
+                "me the answer by missing what they build on.*"
+                if session.skipped
+                else ""
+            )
+        )
+        mastery_table({s: n.mastery for s, n in nodes.items()}, highlight=result.target_skill)
+        return st.button("Start learning", type="primary")
+
+    answered = len(session.answered)
+    total = answered + 1 + sum(
+        1 for q in QUESTIONS
+        if q.skill not in session.answered and q.skill not in session.skipped
+        and q.skill != question.skill
+    )
+    st.subheader(f"Quick check {answered + 1} of about {total}")
+    st.caption(
+        "Before building your path I need to know where you are. There is no grade, and "
+        "getting one wrong just means we start there."
+    )
+    st.markdown(f"**{question.skill}** — {question.prompt}")
+
+    answer = st.text_area(
+        "Your code", value=question.starter_code, height=150, key=f"diag:{question.skill}"
+    )
+    col_a, col_b = st.columns([1, 4])
+    if col_a.button("Submit", type="primary", key=f"diag_submit:{question.skill}"):
+        suite = run_test_cases(
+            SubprocessSandbox(), answer, question.as_problem()["test_cases"]
+        )
+        session.record(
+            question.skill,
+            StudentOutcome.CORRECT if suite.all_passed else StudentOutcome.WRONG_ANSWER,
+        )
+        st.rerun()
+    if col_b.button("Skip — I don't know this one", key=f"diag_skip:{question.skill}"):
+        # Saying "I don't know" is real evidence, and a student who cannot say it will
+        # guess, which is worse evidence.
+        session.record(question.skill, StudentOutcome.WRONG_ANSWER)
+        st.rerun()
+    return False
 
 
 def render_progress_dashboard(store: StudentStore, student_id: str) -> None:
@@ -442,6 +519,7 @@ else:
     active_student_id = student_id or "you"
     build_key = f"durable:{active_student_id}" if student_id else "anonymous:you"
     returning_student = False
+    needs_diagnostic = False
 
     if (
         "app" not in st.session_state
@@ -455,7 +533,11 @@ else:
             store = StudentStore()
             is_new = store.ensure_student(active_student_id)
             if is_new:
+                # A named newcomer gets diagnosed rather than assumed. The seeded
+                # profile stays for the anonymous path, where there is no one to build
+                # a picture of and the demo scenario is the point.
                 seed_student(store, active_student_id)
+                needs_diagnostic = True
             returning_student = not is_new
         else:
             store = StudentStore(":memory:")
@@ -473,6 +555,8 @@ else:
             thread_id=thread_id,
             built_for=build_key,
             returning_student=returning_student,
+            needs_diagnostic=needs_diagnostic,
+            diagnostic=None,
             started=False,
             state=None,
         )
@@ -487,6 +571,15 @@ else:
         attempts = store.attempts_for(active_student_id)
         if attempts:
             st.info(f"Where you left off: **{attempts[-1]['skill']}**.")
+
+    # A newcomer is diagnosed before being taught. Everything below is gated on it,
+    # because planning a learning path from an assumed profile is planning for someone
+    # who does not exist.
+    if st.session_state.get("needs_diagnostic"):
+        if render_diagnostic(store, active_student_id, name.strip() or "there"):
+            st.session_state["needs_diagnostic"] = False
+            st.rerun()
+        st.stop()
 
     target = st.selectbox(
         "Target skill", list(DEMO_SEED), index=list(DEMO_SEED).index("recursion")
