@@ -47,8 +47,17 @@ technical prose - and a check that cries wolf is a check people learn to ignore.
 script inspects the fields that actually determine authorship: author and committer
 identity, attribution trailers, and tracked bot config files.
 
-It is self-tested: a clean commit whose message mentions Claude passes, while a
-`Co-Authored-By:` trailer and a `dependabot[bot]` author are both caught.
+It is covered by `tests/test_contributors.py`, which builds throwaway repositories and
+runs the real script against real history: a clean commit whose message mentions Claude
+passes, while a `Co-Authored-By:` trailer, a `dependabot[bot]` author and a tracked
+`dependabot.yml` are each caught.
+
+One case is there for a specific reason. The script decoded git's UTF-8 output with the
+platform default -- cp1252 on Windows -- so the first commit message containing an emoji
+killed the reader thread and the check died on an AttributeError. It reported FAILED,
+which is exactly what a real violation reports, and the two were indistinguishable at a
+glance. **A broken check here is worse than no check**, because this one is trusted
+without being re-read. If it ever fails, read the output before assuming a violation.
 
 ---
 

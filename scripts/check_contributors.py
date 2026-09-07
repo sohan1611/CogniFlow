@@ -58,8 +58,26 @@ REC = "\x1e"
 
 
 def _git(*args: str) -> str:
+    """Read git output as UTF-8, whatever the console codepage says.
+
+    `text=True` decodes with the platform default, which on Windows is cp1252, and git
+    hands back UTF-8. One commit message containing a character outside cp1252 -- an
+    emoji quoted from the UI, an arrow, a curly apostrophe -- and this raised
+    UnicodeDecodeError inside a reader thread, leaving `.stdout` as None and the whole
+    check dead on an AttributeError three lines later.
+
+    That is the worst way for this particular script to fail. It is the enforcement
+    mechanism for the one hard rule in CLAUDE.md, and a crash reports FAILED the same
+    way a real bot author would, so the finding that matters is indistinguishable from
+    the tool being broken. errors="replace" because a mangled character in a commit
+    message must never stop the check from answering the question it exists to answer.
+    """
     return subprocess.run(
-        ["git", *args], capture_output=True, text=True, check=True
+        ["git", *args],
+        capture_output=True,
+        check=True,
+        encoding="utf-8",
+        errors="replace",
     ).stdout
 
 
