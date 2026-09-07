@@ -19,7 +19,7 @@ import {
   type Progress,
   type TutorView,
 } from "@/lib/api";
-import { LearningPlan } from "./plan";
+import { LearningPlan, pretty } from "./plan";
 import { Shell, type Tab, useGlassSwap } from "./shell";
 
 type Stage = "name" | "diagnostic" | "app";
@@ -239,7 +239,7 @@ export default function Page() {
           </p>
           <div className="card" style={{ marginTop: 18 }}>
             <div className="top">
-              <h3>{step.skill.replace(/_/g, " ")}</h3>
+              <h3>{pretty(step.skill)}</h3>
               <span className="chip">Question {step.answered + 1}</span>
             </div>
             <p className="desc" style={{ whiteSpace: "pre-wrap" }}>{step.prompt}</p>
@@ -262,7 +262,7 @@ export default function Page() {
           <div className="card">
             <p>
               <strong>Start here:</strong>{" "}
-              {step.weakest_skill?.replace(/_/g, " ") ?? "nothing — you are ahead of this course"}
+              {step.weakest_skill ? pretty(step.weakest_skill) : "nothing — you are ahead of this course"}
             </p>
             {step.missing_prerequisites.length > 0 && (
               <p className="sub">
@@ -433,7 +433,7 @@ function Learn({
             <div key={skill} style={{ marginBottom: 12 }}>
               <div className="spread">
                 <span style={{ fontWeight: skill === view.target_skill ? 700 : 400 }}>
-                  {skill.replace(/_/g, " ")}
+                  {pretty(skill)}
                 </span>
                 <span className="muted">{value.toFixed(2)}</span>
               </div>
@@ -510,7 +510,7 @@ function ProgressView({ progress }: { progress: Progress }) {
         {progress.skills.map((s) => (
           <div className="standing" key={s.skill}>
             <div className="spread">
-              <b>{s.skill.replace(/_/g, " ")}</b>
+              <b>{pretty(s.skill)}</b>
               <span className={STANDING_CHIP[s.state]}>{STANDING_LABEL[s.state]}</span>
             </div>
 
@@ -533,13 +533,13 @@ function ProgressView({ progress }: { progress: Progress }) {
             <h2 style={{ margin: "22px 0 12px" }}>Misconceptions</h2>
             {overcome.map((m, i) => (
               <div className="note good" key={`o${i}`}>
-                <strong>Overcome · {m.skill.replace(/_/g, " ")}</strong>
+                <strong>Overcome · {pretty(m.skill)}</strong>
                 {m.text}
               </div>
             ))}
             {active.map((m, i) => (
               <div className="note warn" key={`a${i}`}>
-                <strong>Still working on · {m.skill.replace(/_/g, " ")}</strong>
+                <strong>Still working on · {pretty(m.skill)}</strong>
                 {m.text}
               </div>
             ))}
@@ -563,7 +563,7 @@ function ProgressView({ progress }: { progress: Progress }) {
         {progress.recent_attempts.map((a, i) => (
           <div className={`event ${a.outcome === "CORRECT" ? "leaf" : "butter"}`} key={i}>
             <div className="row" style={{ justifyContent: "space-between" }}>
-              <span className="kind">{a.skill.replace(/_/g, " ")}</span>
+              <span className="kind">{pretty(a.skill)}</span>
               <span className="when">
                 {a.mastery_before.toFixed(2)} → {a.mastery_after.toFixed(2)}
               </span>

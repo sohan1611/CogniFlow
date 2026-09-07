@@ -34,7 +34,10 @@ const BLURBS: Record<string, string> = {
   nested_loops: "A loop inside a loop, and what that costs.",
 };
 
-const pretty = (s: string) => LABELS[s] ?? s.replace(/_/g, " ");
+/* Exported so every screen names a skill identically. Progress spelled its own
+   "Recursion Tree" against the plan's "Recursion Trees" for exactly as long as this
+   lived here privately -- one student, one skill, two names. */
+export const pretty = (s: string) => LABELS[s] ?? s.replace(/_/g, " ");
 
 export function LearningPlan({
   plan,
