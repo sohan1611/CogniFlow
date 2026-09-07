@@ -183,6 +183,16 @@ p  { margin: 0 0 10px; }
 .card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
 .card.active { background: linear-gradient(150deg, var(--lilac) 0%, var(--lilac-2) 100%); border-color: transparent; }
 .card.locked { opacity: .82; }
+
+/* The one card the tutor is pointing at. A ring rather than a fill, so it reads as
+   emphasis on top of whatever state the card is already in -- a suggested topic can
+   equally be untouched or answered-right-once, and neither may be recoloured away. */
+.card.suggested { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft), var(--shadow); }
+.card .flag {
+  margin: -4px 0 8px; font-size: .68rem; font-weight: 700;
+  letter-spacing: .09em; text-transform: uppercase; color: var(--brand);
+}
+.iconbtn.solid.go { background: var(--brand); border-color: var(--brand); }
 .card .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .card .desc { color: var(--ink-2); font-size: .88rem; margin: 8px 0 14px; }
 .card .foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

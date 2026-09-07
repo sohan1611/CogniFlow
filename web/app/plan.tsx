@@ -144,7 +144,10 @@ export function LearningPlan({
               key={skill.skill}
               skill={skill}
               active={skill.skill === activeSkill}
-              suggested={skill.skill === plan.suggested_next}
+              // Suppressed while a skill is in flight. Two cards competing for "do this
+              // next" is worse than none, and the honest next step for someone mid-topic
+              // is to finish it.
+              suggested={!activeSkill && skill.skill === plan.suggested_next}
               onStart={() => onStart(skill.skill)}
               busy={busy}
             />
@@ -175,9 +178,19 @@ function SkillCard({
   const provisional = skill.state === "provisional";
   return (
     <article
-      className={`card${active ? " active" : ""}${locked ? " locked" : ""}`}
+      className={`card${active ? " active" : ""}${locked ? " locked" : ""}${
+        suggested ? " suggested" : ""
+      }`}
       data-skill={skill.skill}
     >
+      {/* The check ends by saying "Start here: functions" and then hands over a grid of
+          eight cards. Until this existed, the suggestion lived only in a `title`
+          attribute -- invisible on a phone, invisible to a screen reader that is not
+          hovering, and invisible to anyone who simply looks. The one instruction the
+          student was given had nowhere to land. Same words as the summary screen, on
+          purpose: they are meant to be recognised, not re-read. */}
+      {suggested && <p className="flag">Start here</p>}
+
       <div className="top">
         <h3>{pretty(skill.skill)}</h3>
         {active ? (
@@ -232,11 +245,14 @@ function SkillCard({
           <span className="muted">{(skill.mastery * 100).toFixed(0)}%</span>
           {!locked && !active && (
             <button
-              className="iconbtn solid"
+              className={`iconbtn solid${suggested ? " go" : ""}`}
               onClick={onStart}
               disabled={busy}
-              aria-label={`Start ${pretty(skill.skill)}`}
-              title={suggested ? "Suggested next" : "Start this skill"}
+              aria-label={
+                suggested
+                  ? `Start ${pretty(skill.skill)} — suggested next`
+                  : `Start ${pretty(skill.skill)}`
+              }
             >
               ▸
             </button>
