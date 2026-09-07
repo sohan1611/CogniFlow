@@ -401,3 +401,56 @@ def test_the_plan_counts_add_up(client: TestClient) -> None:
     counts = plan["counts"]
     assert counts["done"] + counts["provisional"] + counts["upcoming"] == counts["total"]
     assert counts["total"] == len(plan["skills"])
+
+
+def test_progress_and_plan_never_disagree_about_one_student(client: TestClient) -> None:
+    """Two screens, one belief.
+
+    Both endpoints answer "has this student got this skill?" and both must answer it
+    with policy.is_mastered. The plan learned that the hard way -- it tested mastery
+    alone and awarded five "Completed" topics the guard would not have advanced on.
+    Progress computing its own version, in a client or on the server, would reopen the
+    same hole one screen to the left.
+
+    Only the two shared verdicts are compared. "locked" is a routing judgement about
+    where a student may go next and has no counterpart here, which is the point: this
+    screen is about belief, not navigation.
+    """
+    plan = _sit_the_diagnostic(client, "isha")
+    progress = client.get("/student/isha/progress").json()
+
+    plan_state = {s["skill"]: s["state"] for s in plan["skills"]}
+    progress_state = {s["skill"]: s["state"] for s in progress["skills"]}
+    assert set(plan_state) == set(progress_state), "the two screens list different skills"
+
+    for skill, standing in progress_state.items():
+        if standing in ("completed", "provisional"):
+            assert plan_state[skill] == standing, (
+                f"{skill}: progress says {standing!r}, plan says {plan_state[skill]!r}"
+            )
+        else:
+            assert plan_state[skill] in ("locked", "available"), (
+                f"{skill}: progress says unproven, plan says {plan_state[skill]!r}"
+            )
+
+
+def test_progress_reports_the_evidence_not_just_the_estimate(client: TestClient) -> None:
+    """A mastery number without its confidence is the over-claim in miniature.
+
+    The progress screen showed three aggregate numbers and nothing per skill, so the one
+    figure a student could see -- an average mastery of 62% printed beside "0 ATTEMPTS"
+    -- was the least qualified number in the system. Every skill now carries what the
+    estimate rests on.
+    """
+    progress = _sit_the_diagnostic(client, "dev") and client.get(
+        "/student/dev/progress"
+    ).json()
+
+    assert progress["skills"], "a student with a profile must have skills to show"
+    for skill in progress["skills"]:
+        assert {"state", "mastery", "confidence", "attempts"} <= set(skill), skill
+        assert 0.0 <= skill["confidence"] <= 1.0
+        assert skill["attempts"] >= 0
+
+    masteries = [s["mastery"] for s in progress["skills"]]
+    assert masteries == sorted(masteries), "weakest first is the useful order here"

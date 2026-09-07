@@ -138,6 +138,12 @@ export type Progress = {
   overall_mastery: number;
   skills: {
     skill: string;
+    /** Decided by the ENGINE, from the same predicate as the learning plan. No
+     *  threshold comparison belongs in this file: a client that decides for itself
+     *  whether 0.85-at-0.22 counts as mastered is how the plan came to award five
+     *  "Completed" topics the guard would never have advanced on. "locked" is absent
+     *  because it is a routing judgement, and this screen is about belief. */
+    state: "completed" | "provisional" | "unproven";
     mastery: number;
     confidence: number;
     attempts: number;

@@ -447,6 +447,19 @@ function Learn({
   );
 }
 
+/* Server-assigned standing, rendered. Deliberately a lookup rather than a threshold
+   comparison: this file must never decide for itself what counts as mastered. */
+const STANDING_CHIP: Record<string, string> = {
+  completed: "chip done",
+  provisional: "chip maybe",
+  unproven: "chip",
+};
+const STANDING_LABEL: Record<string, string> = {
+  completed: "Confirmed",
+  provisional: "Looks good",
+  unproven: "Not shown yet",
+};
+
 function ProgressView({ progress }: { progress: Progress }) {
   const overcome = progress.skills.flatMap((s) =>
     s.overcome.map((m) => ({ skill: s.skill, text: m })),
@@ -454,28 +467,70 @@ function ProgressView({ progress }: { progress: Progress }) {
   const active = progress.skills.flatMap((s) =>
     s.misconceptions.map((m) => ({ skill: s.skill, text: m })),
   );
+  const confirmed = progress.skills.filter((s) => s.state === "completed").length;
+
   return (
     <div className="columns">
       <section>
         <h1>Progress</h1>
+
+        {/* The headline used to be an average mastery percentage, which read as "you are
+            62% through the course" and sat directly beside "0 ATTEMPTS". It was the mean
+            of the tutor's own estimates, most of which were priors. A count of what has
+            actually been confirmed cannot be misread that way, and it agrees with the
+            learning plan because both come from the same predicate. */}
         <div className="toolbar">
-          <div className="stat">
-            <b>{(progress.overall_mastery * 100).toFixed(0)}%</b>
-            <span>OVERALL</span>
+          <div className="stat done">
+            <b>
+              {confirmed}/{progress.skills.length}
+            </b>
+            <span>CONFIRMED</span>
           </div>
           <div className="stat">
             <b>{progress.total_attempts}</b>
             <span>ATTEMPTS</span>
           </div>
-          <div className="stat done">
+          <div className="stat maybe">
             <b>{overcome.length}</b>
             <span>OVERCOME</span>
           </div>
         </div>
 
+        {/* The whole reason this screen exists, and for a long time the one thing it did
+            not show. The engine returns mastery, confidence and attempts for every
+            skill; the page rendered three aggregate numbers and a white void, so a
+            student who clicked "Progress" to see how they were doing per topic learned
+            nothing about any topic. */}
+        <h2 style={{ margin: "10px 0 4px" }}>Where you stand</h2>
+        <p className="sub" style={{ marginBottom: 14 }}>
+          Weakest first. Confidence is how much evidence sits behind the estimate — a
+          topic answered right once scores high and is believed very little.
+        </p>
+
+        {progress.skills.map((s) => (
+          <div className="standing" key={s.skill}>
+            <div className="spread">
+              <b>{s.skill.replace(/_/g, " ")}</b>
+              <span className={STANDING_CHIP[s.state]}>{STANDING_LABEL[s.state]}</span>
+            </div>
+
+            <div className="bar" style={{ margin: "8px 0 6px" }}>
+              <span style={{ width: `${Math.max(2, Math.min(1, s.mastery) * 100)}%` }} />
+            </div>
+
+            <p className="muted" style={{ margin: 0 }}>
+              {(s.mastery * 100).toFixed(0)}% estimated · {(s.confidence * 100).toFixed(0)}%
+              confidence ·{" "}
+              {s.attempts === 0
+                ? "not attempted yet"
+                : `${s.attempts} attempt${s.attempts === 1 ? "" : "s"}`}
+            </p>
+          </div>
+        ))}
+
         {(overcome.length > 0 || active.length > 0) && (
           <>
-            <h2 style={{ margin: "10px 0 12px" }}>Misconceptions</h2>
+            <h2 style={{ margin: "22px 0 12px" }}>Misconceptions</h2>
             {overcome.map((m, i) => (
               <div className="note good" key={`o${i}`}>
                 <strong>Overcome · {m.skill.replace(/_/g, " ")}</strong>
@@ -498,7 +553,11 @@ function ProgressView({ progress }: { progress: Progress }) {
         </div>
         {progress.recent_attempts.length === 0 && (
           <div className="event plain">
-            <p>No attempts recorded yet.</p>
+            <p>
+              Nothing here yet. The quick check is a probe, not an attempt — this fills
+              up once you start answering real exercises, and every line shows what your
+              mastery did and why.
+            </p>
           </div>
         )}
         {progress.recent_attempts.map((a, i) => (

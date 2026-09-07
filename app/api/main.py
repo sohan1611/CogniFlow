@@ -517,6 +517,22 @@ def progress(student_id: str) -> dict[str, Any]:
         "skills": [
             {
                 "skill": name,
+                # Same word, same predicate, same authority as the learning plan. A
+                # client deciding for itself whether 0.85-at-0.22 counts as mastered is
+                # how the plan came to award five "Completed" topics the guard would not
+                # have advanced on -- and two screens disagreeing about one student is
+                # worse than either being wrong alone.
+                #
+                # "locked" is absent on purpose: that is a routing judgement about what
+                # to do next, and this screen answers a different question -- what the
+                # tutor believes, which does not depend on where the student may go.
+                "state": (
+                    "completed"
+                    if is_mastered(node.mastery, node.confidence)
+                    else "provisional"
+                    if node.mastery >= MASTERY_THRESHOLD
+                    else "unproven"
+                ),
                 "mastery": node.mastery,
                 "confidence": node.confidence,
                 "attempts": node.attempts,
