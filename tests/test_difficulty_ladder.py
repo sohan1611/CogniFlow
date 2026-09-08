@@ -18,6 +18,8 @@ miss.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from app.mastery.difficulty import LADDER, Task, ladder_summary, rung_for
@@ -297,3 +299,60 @@ def test_the_server_owns_the_problem_id(monkeypatch) -> None:
         difficulty=Difficulty.EASY, assessment_type=AssessmentType.CODING,
     ).problem_id for _ in range(50)}
     assert len(fresh) == 50, "the default must be unique per instance"
+
+
+def test_a_problem_the_grader_cannot_mark_is_rejected() -> None:
+    """Observed live: the model returned a coding task with an empty expected_output and
+    no test cases.
+
+    The student writes a correct program, the grader has nothing to compare it against,
+    and they are marked WRONG -- which is a StudentOutcome, so it lowers their mastery
+    and can send them into a prerequisite they do not need. A problem nobody can pass is
+    worse than a repeated one, which is the ranking the generator's retry loop uses.
+    """
+    from app.graph.nodes import _is_usable
+    from app.models.enums import AssessmentType
+    from app.models.schemas import GeneratedProblem
+
+    def problem(**kw):
+        return GeneratedProblem(
+            title="t", prompt="p", skill="loops",
+            difficulty=Difficulty.EASY, assessment_type=AssessmentType.CODING, **kw
+        )
+
+    assert not _is_usable(problem()), "nothing to grade against"
+    assert not _is_usable(problem(expected_output="   ")), "whitespace is not an answer"
+    assert _is_usable(problem(expected_output="10"))
+    assert _is_usable(
+        problem(test_cases=[{"name": "a", "stdin": "", "expected_output": "10"}])
+    )
+
+
+def test_every_ladder_task_is_gradeable() -> None:
+    """The fallback is what the retry loop drops to, so it must never be unmarkable."""
+    from app.graph.nodes import _is_usable, _template_problem
+
+    for skill in LADDER:
+        for level in Difficulty:
+            built = _template_problem({"target_skill": skill, "difficulty_level": level})
+            assert _is_usable(built), f"{skill}/{level.value} cannot be graded"
+
+
+def test_every_skill_in_the_curriculum_has_a_ladder() -> None:
+    """A skill in skills.yaml but not in LADDER falls to the generic rung, which has no
+    authored tasks -- so its fallback has no expected output and cannot be graded.
+
+    That is a silent failure: the skill works, generates, and then marks every correct
+    answer wrong. Adding a skill without a ladder must break a test rather than a student.
+    """
+    import yaml
+
+    configured = set(yaml.safe_load(Path("app/config/skills.yaml").read_text(encoding="utf-8")))
+    missing = configured - set(LADDER)
+    assert not missing, f"skills with no difficulty ladder: {sorted(missing)}"
+
+    for skill in configured:
+        for level in Difficulty:
+            assert rung_for(skill, level).variants, (
+                f"{skill}/{level.value} has no authored task, so its fallback is ungradeable"
+            )

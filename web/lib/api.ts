@@ -111,6 +111,9 @@ export type TutorView = {
     to: string;
     direction: "up" | "down";
     reason: string | null;
+    /** Built from the ladder for the student. `reason` stays the guard's exact
+     *  words for the audit trail; this is the one a learner can act on. */
+    student_reason: string | null;
     demands: string | null;
     concepts: string[];
   } | null;

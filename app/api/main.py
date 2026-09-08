@@ -38,9 +38,10 @@ from app.graph.deps import GraphDeps
 from app.graph.state import initial_state
 from app.llm.provider import Role, available_chain
 from app.mastery.misconceptions import hints_for
+from app.mastery.difficulty import rung_for
 from app.mastery.policy import MASTERY_THRESHOLD, is_mastered
 from app.mastery.skill_graph import SkillGraph
-from app.models.enums import StudentOutcome
+from app.models.enums import Difficulty, StudentOutcome
 from app.rag.retriever import Retriever
 from app.services.demo_runner import seed_student
 from app.services.diagnostic import DiagnosticSession
@@ -232,13 +233,36 @@ def _difficulty_change(events: EventLog) -> dict[str, Any] | None:
     adaptations = [e for e in events.events if e.event_type == EventType.ADAPTATION]
     rank_before = _DIFFICULTY_ORDER.get(before, -1)
     rank_after = _DIFFICULTY_ORDER.get(after, -1)
+    going_up = rank_after > rank_before
+
+    skill = str(generated[-1].payload.get("skill") or "")
+    was = rung_for(skill, Difficulty(before)) if before in _DIFFICULTY_ORDER else None
+    now = rung_for(skill, Difficulty(after)) if after in _DIFFICULTY_ORDER else None
+
+    # Two audiences, two sentences, and they are not interchangeable.
+    #
+    # `reason` is the policy guard's own words, carried through unmodified, because the
+    # audit trail must not drift from the decision it records. But those words are
+    # diagnostics: a student who levelled up was shown "insufficient evidence for mastery
+    # or remediation decision", which is true, internal, and useless to them.
+    #
+    # `student_reason` is built from the ladder -- the authority on what each level
+    # demands -- so it says what changed in terms of the work, and cannot invent a
+    # motive the system did not have.
+    student_reason = None
+    if was and now:
+        student_reason = (
+            f"You handled {was.demands}. Now testing {now.demands}."
+            if going_up
+            else f"Stepping back to {now.demands} before trying {was.demands} again."
+        )
+
     return {
         "from": before,
         "to": after,
-        "direction": "up" if rank_after > rank_before else "down",
-        # The guard's own words. Not a rephrasing: if the displayed reason and the
-        # logged reason can drift, the one on screen stops being evidence.
+        "direction": "up" if going_up else "down",
         "reason": adaptations[-1].decision_reason if adaptations else None,
+        "student_reason": student_reason,
         "demands": generated[-1].payload.get("cognitive_level") or None,
         "concepts": [c for c in str(generated[-1].payload.get("concepts") or "").split(",") if c],
     }

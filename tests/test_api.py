@@ -524,3 +524,11 @@ def test_a_difficulty_change_arrives_with_its_reason(client: TestClient) -> None
     assert seen["from"] != seen["to"]
     assert seen["direction"] in ("up", "down")
     assert seen["reason"], "a level change with no reason is the thing this prevents"
+    assert seen["student_reason"], (
+        "the guard's own words are diagnostics -- a student who levelled up was shown "
+        "'insufficient evidence for mastery or remediation decision', which is true, "
+        "internal, and useless to them"
+    )
+    assert "insufficient evidence" not in (seen["student_reason"] or ""), (
+        "the student sentence must not just echo the internal one"
+    )

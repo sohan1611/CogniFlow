@@ -434,7 +434,7 @@ function Learn({
                 ? `Difficulty increased: ${view.difficulty_change.from} → ${view.difficulty_change.to}`
                 : `Difficulty adjusted: ${view.difficulty_change.from} → ${view.difficulty_change.to}`}
             </strong>
-            {view.difficulty_change.reason}
+            {view.difficulty_change.student_reason ?? view.difficulty_change.reason}
             {view.difficulty_change.concepts.length > 0 && (
               <span className="muted" style={{ display: "block", marginTop: 6 }}>
                 Now testing: {view.difficulty_change.concepts.map((c) => c.replace(/_/g, " ")).join(", ")}

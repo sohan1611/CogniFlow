@@ -345,6 +345,24 @@ def _template_problem(state: AgentState, attempt: int = 0) -> GeneratedProblem:
     )
 
 
+def _is_usable(problem: GeneratedProblem) -> bool:
+    """Can a submission to this problem actually be marked?
+
+    Observed live: the model returned a coding task with an empty expected_output and no
+    test cases. The student writes a correct program, the grader has nothing to compare
+    it against, and they are marked WRONG -- which is a StudentOutcome, so it lowers
+    their mastery and can send them into a prerequisite they do not need. A problem
+    nobody can pass is worse than a repeated one, and that is the ranking the retry loop
+    now uses.
+
+    No assessment type is exempt. Every member of AssessmentType is graded by EXECUTION
+    -- that is stated in the enum's own docstring and is what keeps grading deterministic
+    and free -- so a task with nothing to compare against is unmarkable whatever shape it
+    claims to be.
+    """
+    return bool(problem.expected_output.strip() or problem.test_cases)
+
+
 def _assessment_instruction(assessment: str | AssessmentType) -> str:
     """What this assessment shape requires of the generated problem.
 
@@ -443,8 +461,14 @@ def make_generate_problem(deps: GraphDeps) -> Node:
             outcome = _ask(recent_prompts[-4:], attempts)
             problem = outcome.value
             assert isinstance(problem, GeneratedProblem)
-            if problem.content_key() not in seen_keys:
+            if _is_usable(problem) and problem.content_key() not in seen_keys:
                 break
+        else:
+            # Three drafts and none of them usable. A familiar question is survivable;
+            # an ungradeable one is not, so fall through to a ladder task, which always
+            # carries an expected output that has been run and checked.
+            if not _is_usable(problem):
+                problem = _template_problem(state, attempts)
 
         problem.grounding_sources = [
             f"{s['source']}#{s['section']}" for s in state.get("retrieved_sources", [])[:3]
