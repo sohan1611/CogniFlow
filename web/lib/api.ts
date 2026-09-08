@@ -103,6 +103,17 @@ export type TutorView = {
   returning_to: string | null;
   recommended_next: string | null;
   session_status: string | null;
+  /** Set only on the problem where the level actually moved, and null otherwise.
+   *  Carries the guard's own reason rather than a rephrasing of it: if the sentence on
+   *  screen can drift from the one in the log, it stops being evidence. */
+  difficulty_change: {
+    from: string;
+    to: string;
+    direction: "up" | "down";
+    reason: string | null;
+    demands: string | null;
+    concepts: string[];
+  } | null;
   events: TutorEvent[];
 };
 
@@ -160,6 +171,19 @@ export type Progress = {
   total_attempts: number;
 };
 
+export type Activity = {
+  student_id: string;
+  days: number;
+  since: string;
+  total: number;
+  attempts: {
+    at: string;
+    skill: string;
+    outcome: string;
+    correct: boolean;
+  }[];
+};
+
 // ---------------------------------------------------------------- calls
 export const api = {
   health: () => request<Health>("/health"),
@@ -203,4 +227,7 @@ export const api = {
   plan: (id: string) => request<Plan>(`/student/${id}/plan`),
 
   progress: (id: string) => request<Progress>(`/student/${id}/progress`),
+
+  activity: (id: string, days = 120) =>
+    request<Activity>(`/student/${id}/activity?days=${days}`),
 };

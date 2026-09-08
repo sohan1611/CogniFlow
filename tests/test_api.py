@@ -497,3 +497,30 @@ def test_activity_is_bounded_by_the_window_it_advertises(client: TestClient) -> 
 
 def test_activity_404s_for_an_unknown_student(client: TestClient) -> None:
     assert client.get("/student/nobody-at-all/activity").status_code == 404
+
+
+def test_a_difficulty_change_arrives_with_its_reason(client: TestClient) -> None:
+    """Moving a student between levels without saying why reads as arbitrary.
+
+    The guard already computes a reason for every adaptation and the log already records
+    the difficulty of every problem. This asserts the two are carried to the frontend
+    together, so the screen can say "EASY -> MEDIUM" and then why.
+    """
+    client.post("/session", json={"name": "Ishan"})
+    view = client.post(
+        "/session/ishan/start", json={"name": "Ishan", "target_skill": "loops"}
+    ).json()
+    assert "difficulty_change" in view, "the field must always exist, even when null"
+    assert view["difficulty_change"] is None, "nothing has changed on the first problem"
+
+    seen: dict | None = None
+    for _ in range(5):
+        view = client.post("/session/ishan/submit", json={"code": "print('wrong')"}).json()
+        if view.get("difficulty_change"):
+            seen = view["difficulty_change"]
+            break
+
+    assert seen, "five failures produced no difficulty change at all"
+    assert seen["from"] != seen["to"]
+    assert seen["direction"] in ("up", "down")
+    assert seen["reason"], "a level change with no reason is the thing this prevents"

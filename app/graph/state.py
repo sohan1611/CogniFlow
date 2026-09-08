@@ -80,6 +80,18 @@ class AgentState(TypedDict, total=False):
     """Guards the 'do not generate effectively identical problems' requirement
     mechanically, rather than by asking a prompt nicely."""
 
+    recent_prompts: list[str]
+    """The literal wording of recent problems, fed back to the generator as a
+    do-not-repeat list. A model cannot avoid what it has not been shown."""
+
+    recent_content_keys: list[str]
+    """The same guard, asked the question a STUDENT would ask.
+
+    A fingerprint includes difficulty, so one sentence served at EASY and again at HARD
+    is two fingerprints and passes the check -- which is precisely the bug that made this
+    field necessary. A content key ignores the level, so a repeat is caught however it is
+    labelled."""
+
     # -- decisions ---------------------------------------------------------
     last_action: str | None
     next_action: str | None
@@ -148,6 +160,8 @@ def initial_state(
         diagnostic_history=[],
         assessment_history=[],
         recent_problem_hashes=[],
+        recent_prompts=[],
+        recent_content_keys=[],
         last_action=None,
         next_action=None,
         decision_reason=None,

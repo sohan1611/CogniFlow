@@ -13,12 +13,15 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ApiError,
   api,
+  type Activity,
   type DiagnosticStep,
   type Health,
   type Plan,
   type Progress,
   type TutorView,
 } from "@/lib/api";
+import { StudentDashboard } from "./dashboard";
+import { CodeEditor } from "./editor";
 import { LearningPlan, pretty } from "./plan";
 import { Shell, type Tab, useGlassSwap } from "./shell";
 
@@ -39,6 +42,7 @@ export default function Page() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [view, setView] = useState<TutorView | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
+  const [activity, setActivity] = useState<Activity | null>(null);
   const [code, setCode] = useState("");
   const [hints, setHints] = useState<string[]>([]);
   const [shown, setShown] = useState(0);
@@ -161,7 +165,14 @@ export default function Page() {
   const changeTab = (next: Tab) =>
     guard(async () => {
       if (next === "plan") setPlan(await api.plan(id));
-      if (next === "progress") setProgress(await api.progress(id));
+      if (next === "progress") {
+        const [nextProgress, nextActivity] = await Promise.all([
+          api.progress(id),
+          api.activity(id),
+        ]);
+        setProgress(nextProgress);
+        setActivity(nextActivity);
+      }
       swap(() => setTab(next));
     });
 
@@ -174,6 +185,7 @@ export default function Page() {
       setView(null);
       setPlan(null);
       setProgress(null);
+      setActivity(null);
       setStep(null);
       setHints([]);
       setShown(0);
@@ -309,7 +321,11 @@ export default function Page() {
               <span className="chip">Question {step.answered + 1}</span>
             </div>
             <p className="desc" style={{ whiteSpace: "pre-wrap" }}>{step.prompt}</p>
-            <textarea value={code} onChange={(e) => setCode(e.target.value)} spellCheck={false} />
+            <CodeEditor
+              value={code}
+              onChange={setCode}
+              ariaLabel="Diagnostic answer"
+            />
             <div className="row" style={{ marginTop: 12 }}>
               <button className="btn" onClick={() => answer(code)} disabled={busy}>
                 {busy ? "Checking…" : "Submit"}
@@ -368,8 +384,8 @@ export default function Page() {
         />
       )}
 
-      {stage === "app" && tab === "progress" && progress && (
-        <ProgressView progress={progress} />
+      {stage === "app" && tab === "progress" && progress && activity && (
+        <ProgressView progress={progress} activity={activity} />
       )}
     </Shell>
   );
@@ -407,6 +423,26 @@ function Learn({
     <div className="columns">
       <section>
         {/* Our failure is never shown as the student's mistake. */}
+        {/* A student moved to a harder problem with no explanation has been handed a
+            harder problem for no visible reason, which reads as the system being
+            arbitrary. The reason shown here is the policy guard's own, carried through
+            unchanged. */}
+        {view.difficulty_change && (
+          <div className={`note ${view.difficulty_change.direction === "up" ? "info" : "warn"}`}>
+            <strong>
+              {view.difficulty_change.direction === "up"
+                ? `Difficulty increased: ${view.difficulty_change.from} → ${view.difficulty_change.to}`
+                : `Difficulty adjusted: ${view.difficulty_change.from} → ${view.difficulty_change.to}`}
+            </strong>
+            {view.difficulty_change.reason}
+            {view.difficulty_change.concepts.length > 0 && (
+              <span className="muted" style={{ display: "block", marginTop: 6 }}>
+                Now testing: {view.difficulty_change.concepts.map((c) => c.replace(/_/g, " ")).join(", ")}
+              </span>
+            )}
+          </div>
+        )}
+
         {fb?.was_our_fault && (
           <div className="note ours">
             <strong>Something on our side went wrong</strong>
@@ -449,7 +485,11 @@ function Learn({
                 Expected output: <code>{view.problem.expected_output}</code>
               </p>
             )}
-            <textarea value={code} onChange={(e) => setCode(e.target.value)} spellCheck={false} />
+            <CodeEditor
+              value={code}
+              onChange={setCode}
+              ariaLabel="Exercise answer"
+            />
             <div className="row" style={{ marginTop: 12 }}>
               <button className="btn" onClick={onSubmit} disabled={busy}>
                 {busy ? "Running…" : "Submit"}
@@ -526,7 +566,7 @@ const STANDING_LABEL: Record<string, string> = {
   unproven: "Not shown yet",
 };
 
-function ProgressView({ progress }: { progress: Progress }) {
+function ProgressView({ progress, activity }: { progress: Progress; activity: Activity }) {
   const overcome = progress.skills.flatMap((s) =>
     s.overcome.map((m) => ({ skill: s.skill, text: m })),
   );
@@ -539,6 +579,8 @@ function ProgressView({ progress }: { progress: Progress }) {
     <div className="columns">
       <section>
         <h1>Progress</h1>
+
+        <StudentDashboard activity={activity} />
 
         {/* The headline used to be an average mastery percentage, which read as "you are
             62% through the course" and sat directly beside "0 ATTEMPTS". It was the mean

@@ -18,12 +18,19 @@ import type { Health } from "@/lib/api";
 const SWEEP_MS = 620;
 
 export type Tab = "plan" | "learn" | "progress";
+type ThemeChoice = "light" | "dark" | "system";
 
 const TABS: { id: Tab; label: string; mobileLabel: string; icon: string }[] = [
   { id: "plan", label: "Learning Plan", mobileLabel: "Plan", icon: "◎" },
   { id: "learn", label: "Learn", mobileLabel: "Learn", icon: "✎" },
   { id: "progress", label: "Progress", mobileLabel: "Progress", icon: "◷" },
 ];
+const THEME_OPTIONS: ThemeChoice[] = ["light", "dark", "system"];
+const THEME_LABEL: Record<ThemeChoice, string> = {
+  light: "Light",
+  dark: "Dark",
+  system: "System",
+};
 
 type HealthWithCorpus = Health & { corpus?: unknown };
 
@@ -71,6 +78,7 @@ export function Shell({
   sweeping: boolean;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
+  const [theme, setTheme] = useState<ThemeChoice>("system");
   const dialogRef = useRef<HTMLDivElement>(null);
   const headerTriggerRef = useRef<HTMLButtonElement>(null);
   const bottomTriggerRef = useRef<HTMLButtonElement>(null);
@@ -92,9 +100,38 @@ export function Shell({
     setMoreOpen(true);
   };
 
+  const applyTheme = useCallback((next: ThemeChoice) => {
+    setTheme(next);
+    if (next === "system") {
+      document.documentElement.removeAttribute("data-theme");
+    } else {
+      document.documentElement.dataset.theme = next;
+    }
+    try {
+      localStorage.setItem("cogniflow-theme", next);
+    } catch {}
+  }, []);
+
   const closeMore = useCallback(() => {
     setMoreOpen(false);
     window.setTimeout(() => lastTriggerRef.current?.focus({ preventScroll: true }), 0);
+  }, []);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("cogniflow-theme");
+      if (stored === "light" || stored === "dark" || stored === "system") {
+        setTheme(stored);
+        if (stored === "system") {
+          document.documentElement.removeAttribute("data-theme");
+        } else {
+          document.documentElement.dataset.theme = stored;
+        }
+      }
+    } catch {
+      const stamped = document.documentElement.dataset.theme;
+      setTheme(stamped === "light" || stamped === "dark" ? stamped : "system");
+    }
   }, []);
 
   useEffect(() => {
@@ -216,8 +253,10 @@ export function Shell({
           name={name}
           initials={initials}
           health={health}
+          theme={theme}
           onClose={closeMore}
           onChangeName={changeName}
+          onTheme={applyTheme}
         />
       )}
     </>
@@ -229,15 +268,19 @@ function MoreSheet({
   name,
   initials,
   health,
+  theme,
   onClose,
   onChangeName,
+  onTheme,
 }: {
   dialogRef: React.RefObject<HTMLDivElement | null>;
   name: string | null;
   initials: string;
   health: Health | null;
+  theme: ThemeChoice;
   onClose: () => void;
   onChangeName: () => void;
+  onTheme: (theme: ThemeChoice) => void;
 }) {
   const providersPresent = (health?.providers.length ?? 0) > 0;
   const generationText = !health
@@ -283,6 +326,23 @@ function MoreSheet({
           <button type="button" className="sheet-action" onClick={onChangeName}>
             Change name
           </button>
+        </section>
+
+        <section className="more-section">
+          <h3>Appearance</h3>
+          <div className="theme-toggle" role="radiogroup" aria-label="Appearance">
+            {THEME_OPTIONS.map((option) => (
+              <button
+                key={option}
+                type="button"
+                role="radio"
+                aria-checked={theme === option}
+                onClick={() => onTheme(option)}
+              >
+                {THEME_LABEL[option]}
+              </button>
+            ))}
+          </div>
         </section>
 
         <section className="more-section">

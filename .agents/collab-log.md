@@ -463,3 +463,24 @@ Newest entries at the bottom. Gists only, never secrets.
 - Fix: hint matching moved to its own `HINT_CODE_SIGNATURES` table that never calls `detect()`. Detection and hint selection answer different questions — one runs after a failure on interpreter evidence and changes the learning path, the other runs on an unfinished draft and only changes a displayed sentence. A guess good enough for a hint is not good enough to reroute a student.
 - Verified: 288 pass, ALL GATES PASSED, demo path `recursion -> functions -> recursion` 7/7, diagnosis still implicates `functions`.
 - Lesson for future specs: say explicitly which behaviour must NOT change, not only which files are out of scope.
+
+## 2026-09-08 13:10 — Work order 3 (Claude → Codex)
+- Task: mobile-first "spatial" redesign of web/ — fix 267px of horizontal overflow at 375px, dark phone theme, sticky compact header, fixed bottom bar, More sheet, and the prerequisite DAG rendered as a vertical spine below 768px.
+- Codex: implemented across globals.css, layout.tsx, shell.tsx, page.tsx, plan.tsx. Reported it could not run the build (sandbox cannot spawn processes) but did in-process TS and PostCSS checks.
+- Review: verified pass. Build clean; measured zero horizontal overflow at 320/360/375/390/412/768/1024/1440 (was 267px at 375); no fabricated content; health probe, useGlassSwap and all api.* calls intact; desktop unchanged.
+- Two defects found by RUNNING it, not reading it: the exercise prompt had inherited the plan card's `-webkit-line-clamp: 2`, so the question a student must answer was cut off mid-sentence; and the answer box computed to 13.92px, under the 16px threshold that makes iOS zoom on focus. Corrections sent as a fresh `exec` — `exec resume` still rejects `-C`, as noted in work order 2.
+- Escalated one item to a direct edit: Codex hid a redundant "Change name" heading with `:has()` + `display:none` because shell.tsx was outside the scope line I gave it. Deleted the JSX instead. Lesson: a scope list that excludes the file holding the markup forces a CSS workaround for a markup problem.
+
+## 2026-09-08 13:40 — Work order 4 (Claude → Codex)
+- Task: replace the answer textarea with CodeMirror 6 (Tab indent, auto-indent, Python highlighting), add a local-time study heatmap over the new /student/{id}/activity endpoint, and re-scope dark from a breakpoint to a light/dark/system theme with a pre-paint script.
+- Codex: attempt 1 changed nothing — the sandbox blocked process spawning AND no filesystem fallback was exposed, so it could not read the sources. It declined to write code against files it had not seen rather than guess, which is the right call under RULE 5.
+- Review: retried with an explicit instruction to use the node_repl MCP fallback (which had worked on work order 3) and a note that the CodeMirror packages were already installed.
+- Codex (retry): delivered all three. editor.tsx (CodeMirror 6, indentWithTab, 4-space indentUnit, Escape unbound so it can still be left), dashboard.tsx (16-week heatmap + hour strip, bucketed in the browser), theme re-scoped from a breakpoint to [data-theme] + prefers-color-scheme with a pre-paint script.
+- Review: verified pass. Build clean. Tab -> 4 spaces and Enter after "def f(n):" -> auto-indent, both proven headlessly against @codemirror/commands because the browser harness cannot deliver synthetic text to CodeMirror's DOM-mutation path. Theme stamps data-theme and persists; tokens and color-scheme both flip. Heatmap renders 112 real cells and puts an 08:55 UTC attempt at ~14:00 local.
+
+## 2026-09-08 15:20 — Difficulty ladder (Claude, direct)
+- Task: EASY/MEDIUM/HARD were labels only. Not delegated: this is core pedagogy and the failure mode is silent.
+- Diagnosis: `_template_problem` ignored difficulty entirely (one sentence at every level, only the title changed) and the generation prompt passed the bare word "HARD" with no definition. Anti-repetition was computed and logged as `"repeat": true`, then ignored. The deployed engine has no provider key, so students were seeing the fallback.
+- Built app/mastery/difficulty.py: 8 skills x 3 rungs of criteria (concepts, cognitive level, complexity) driving both the prompt and the fallback, with 30 authored tasks.
+- Every expected_output verified by running a reference solution through the real sandbox — a wrong one marks correct work wrong, which is a StudentOutcome and lowers mastery. Two tasks were rejected during authoring: a memoised-fib call count (implementation-dependent) and a two-sum with two valid answers.
+- Live run caught the model returning problem_id="loop_sum_easy_001" — a slug, not an identifier. The server now assigns it unconditionally.

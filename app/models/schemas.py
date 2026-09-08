@@ -3,6 +3,8 @@
 Invariant: persisted mastery and confidence values are always bounded in [0, 1].
 """
 
+from uuid import uuid4
+
 from pydantic import BaseModel, Field
 
 from app.models.enums import (
@@ -151,14 +153,41 @@ class GeneratedProblem(BaseModel):
     expected_output: str = ""
     grounding_sources: list[str] = Field(default_factory=list)
 
+    # What this task actually demands, carried alongside it. A problem labelled HARD can
+    # now be checked against the concepts and cognitive level its rung promised, instead
+    # of the label being the only evidence for the claim.
+    concepts: list[str] = Field(default_factory=list)
+    cognitive_level: str = ""
+    complexity: str = ""
+    problem_id: str = Field(default_factory=lambda: uuid4().hex[:12])
+    generation_seed: str = ""
+
     def fingerprint(self) -> str:
-        """Stable hash of the task's substance, used to avoid re-issuing near-identical
-        problems. Deliberately excludes title and sources, which can differ while the
-        underlying exercise is the same."""
+        """Identity of this exact task at this exact level.
+
+        Includes difficulty, so the same wording at EASY and at HARD are two different
+        fingerprints -- which is correct for "have I served this exact problem", and
+        exactly wrong for "is this a rerun of something they have already seen". Use
+        `content_key` for the second question.
+        """
         import hashlib
 
         basis = f"{self.skill}|{self.difficulty}|{self.assessment_type}|{self.prompt.strip().lower()}"
         return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:16]
+
+    def content_key(self) -> str:
+        """Identity of the QUESTION, ignoring what level it was served at.
+
+        This is the one that catches the bug that prompted all of this: the same sentence
+        handed to a student at EASY, then MEDIUM, then HARD, differing only in the word in
+        the title. Under `fingerprint` those are three distinct problems. Under this they
+        are one, which is what a student would tell you.
+        """
+        import hashlib
+        import re
+
+        normalised = re.sub(r"\s+", " ", self.prompt.strip().lower())
+        return hashlib.sha256(f"{self.skill}|{normalised}".encode("utf-8")).hexdigest()[:16]
 
 
 class GradeResult(BaseModel):

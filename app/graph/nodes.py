@@ -27,7 +27,9 @@ and free.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
+from uuid import uuid4
 
 from langgraph.types import interrupt
 
@@ -37,6 +39,7 @@ from app.llm.provider import Role
 from app.mastery import policy
 from app.mastery.bkt import resolve_misconceptions, update_skill
 from app.mastery.guard import validate
+from app.mastery.difficulty import ladder_summary, rung_for
 from app.mastery.policy import PolicyContext
 from app.mastery.skill_graph import SkillGraph
 from app.models.enums import (
@@ -266,16 +269,28 @@ def make_retrieve(deps: GraphDeps) -> Node:
     return retrieve
 
 
-def _template_problem(state: AgentState) -> GeneratedProblem:
+def _template_problem(state: AgentState, attempt: int = 0) -> GeneratedProblem:
     """Deterministic fallback used when no model is reachable.
 
     Keeps a session alive during a provider outage instead of ending it. The event log
     records that generation was degraded, so nothing pretends the model succeeded.
+
+    It used to ignore difficulty completely: one sentence -- "Write a Python function
+    demonstrating {skill}" -- served at every level, with only the title changing. A
+    student who worked up from EASY to HARD got the same task three times. It now reads
+    the ladder, so each level is a genuinely different exercise, and rotates through that
+    rung's variants by `attempt` so a repeat visit is not a repeat question.
+
+    Being honest about what this is: with no model reachable it cannot write new prose.
+    It can stop lying about difficulty and stop repeating itself, and that is what it now
+    does. Novel problems come from the live path.
     """
     skill = state["target_skill"] or "python"
     difficulty = state.get("difficulty_level", Difficulty.MEDIUM)
     mode = state.get("teaching_mode", TeachingMode.TEXTUAL)
     assessment = state.get("assessment_type", AssessmentType.CODING)
+    rung = rung_for(skill, difficulty)
+
     starter = ""
     if assessment == AssessmentType.DEBUGGING:
         # The classic return-vs-print confusion, which is what a recursion failure
@@ -300,12 +315,20 @@ def _template_problem(state: AgentState) -> GeneratedProblem:
             "print(compute(4))"
         )
         expected = "12"
+    elif rung.variants:
+        task = rung.variants[attempt % len(rung.variants)]
+        prompt = task.prompt
+        expected = task.expected
+        starter = task.starter
     else:
+        # A skill with no authored tasks still gets a level-appropriate demand rather
+        # than the old one-size sentence.
         prompt = (
-            f"Write a Python function demonstrating {skill}. "
-            "Print the result of calling it so the output can be checked."
+            f"Write a Python program about {skill} that requires {rung.demands}. "
+            "Print the result so the output can be checked."
         )
         expected = ""
+
     return GeneratedProblem(
         title=f"{skill} practice ({difficulty})",
         prompt=prompt,
@@ -315,6 +338,10 @@ def _template_problem(state: AgentState) -> GeneratedProblem:
         starter_code=starter,
         expected_output=expected,
         test_cases=[{"name": "default", "stdin": "", "expected_output": expected}] if expected else [],
+        concepts=list(rung.concepts),
+        cognitive_level=rung.cognitive_level,
+        complexity=rung.complexity,
+        generation_seed=f"template:{skill}:{difficulty}:{attempt}",
     )
 
 
@@ -351,42 +378,96 @@ def make_generate_problem(deps: GraphDeps) -> Node:
 
     def generate_problem(state: AgentState) -> dict[str, Any]:
         skill = state["target_skill"]
-        context = "\n\n---\n".join(state.get("retrieved_context", [])[:3])
+        difficulty = state.get("difficulty_level", Difficulty.MEDIUM)
+        context = "\n\n---\n\n".join(state.get("retrieved_context", [])[:3])
         recent = state.get("recent_problem_hashes", [])
+        seen_keys = state.get("recent_content_keys", [])
+        rung = rung_for(skill, difficulty)
 
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You author short Python exercises for one student. Ground the task "
-                    "in the supplied curriculum material. Return only the schema fields."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Skill: {skill}\nDifficulty: {state.get('difficulty_level')}\n"
-                    f"Teaching mode: {state.get('teaching_mode')}\n"
-                    f"Assessment type: {state.get('assessment_type')}\n"
-                    f"Curriculum material:\n{context or '(none available)'}\n\n"
-                    "Write one exercise. If it is a coding task, give an expected_output "
-                    "that a correct solution would print.\n"
-                    + _assessment_instruction(
-                        state.get("assessment_type", AssessmentType.CODING)
-                    )
-                ),
-            },
-        ]
-        outcome = deps.llm(Role.GENERATE).call_structured(
-            GeneratedProblem, messages, fallback=_template_problem(state)
-        )
-        problem = outcome.value
-        assert isinstance(problem, GeneratedProblem)
+        def _ask(avoid: list[str], attempt: int) -> Any:
+            """One generation attempt. `avoid` names prompts the student has already had."""
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You author short Python exercises for one student. Ground the "
+                        "task in the supplied curriculum material. Return only the schema "
+                        "fields."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Skill: {skill}\nDifficulty: {difficulty}\n"
+                        f"Teaching mode: {state.get('teaching_mode')}\n"
+                        f"Assessment type: {state.get('assessment_type')}\n\n"
+                        # The whole ladder, not just the rung being asked for. "Make this
+                        # HARD" is meaningless without knowing what EASY already covered:
+                        # difficulty is a relation between levels, not a property of one.
+                        f"What each level means for this skill:\n{ladder_summary(skill)}\n\n"
+                        f"You are writing the {difficulty} one. It must demand "
+                        f"{rung.demands}. Concepts in play: {', '.join(rung.concepts)}. "
+                        f"Cognitive level: {rung.cognitive_level}.\n\n"
+                        "A harder level is NOT the same task with bigger numbers, a longer "
+                        "list, or renamed variables. It is a DIFFERENT problem requiring "
+                        "deeper reasoning."
+                        + (
+                            f"\n\nThis student has already been given the following. Do "
+                            f"not repeat them or write a variation of them:\n- "
+                            + f"\n- ".join(avoid)
+                            if avoid
+                            else ""
+                        )
+                        + f"\n\nCurriculum material:\n{context or '(none available)'}\n\n"
+                        "Write one exercise. If it is a coding task, give an "
+                        "expected_output that a correct solution would print."
+                        + _assessment_instruction(
+                            state.get("assessment_type", AssessmentType.CODING)
+                        )
+                    ),
+                },
+            ]
+            return deps.llm(Role.GENERATE).call_structured(
+                GeneratedProblem, messages, fallback=_template_problem(state, attempt)
+            )
+
+        # Generate, and if the result is something this student has already seen, say so
+        # and ask again. The old code computed `fp in recent`, put it in the event log as
+        # "repeat": true, and served the problem anyway -- the check existed and nothing
+        # acted on it. Two retries, because a model that has ignored the avoid-list twice
+        # will ignore it a third time, and a student waiting on a fourth round trip is a
+        # worse outcome than a familiar question.
+        recent_prompts = state.get("recent_prompts", [])
+        attempts = 0
+        for attempts in range(3):
+            outcome = _ask(recent_prompts[-4:], attempts)
+            problem = outcome.value
+            assert isinstance(problem, GeneratedProblem)
+            if problem.content_key() not in seen_keys:
+                break
 
         problem.grounding_sources = [
             f"{s['source']}#{s['section']}" for s in state.get("retrieved_sources", [])[:3]
         ]
+        # Metadata from the rung rather than from the model. A model asked to
+        # self-report its own difficulty will agree with whatever it was told; the
+        # ladder is the authority on what this level demands.
+        problem.concepts = list(rung.concepts)
+        problem.cognitive_level = rung.cognitive_level
+        problem.complexity = rung.complexity
+
+        # Server-assigned, unconditionally, because the model will happily supply its
+        # own. Observed live: it returned problem_id="loop_sum_easy_001" -- readable,
+        # plausible, and guaranteed to collide the next time any student anywhere is
+        # given an easy loop-sum task. An identifier a generator invents from the
+        # content is not an identifier, it is a slug. The requirement is uniqueness,
+        # and only the server can promise that.
+        problem.problem_id = uuid4().hex[:12]
+        problem.generation_seed = f"live:{skill}:{difficulty}:{attempts}"
+
         fp = problem.fingerprint()
+        key = problem.content_key()
+        repeated = key in seen_keys
 
         deps.events.emit(
             "generate_problem",
@@ -395,6 +476,9 @@ def make_generate_problem(deps: GraphDeps) -> Node:
                 "title": problem.title,
                 "skill": problem.skill,
                 "difficulty": str(problem.difficulty),
+                "concepts": ",".join(problem.concepts),
+                "cognitive_level": problem.cognitive_level,
+                "problem_id": problem.problem_id,
                 "degraded": outcome.used_fallback,
                 "provider": outcome.provider_used,
                 # Why it degraded, not just that it did. A key that is present but
@@ -409,14 +493,24 @@ def make_generate_problem(deps: GraphDeps) -> Node:
                 # one indistinguishable degraded=True. Provider error strings carry
                 # status and reason, never the credential.
                 "why": (outcome.error_message or "")[:90] if outcome.used_fallback else None,
-                "repeat": fp in recent,
+                # Reported after the retries, so a true here means we asked again and
+                # still could not get something new -- not merely that the first draft
+                # was familiar.
+                "repeat": repeated,
+                "regenerations": attempts,
             },
             evidence=problem.grounding_sources,
+            reason=(
+                f"{difficulty} {skill}: {rung.demands}"
+                + (" (repeat -- could not produce a new one)" if repeated else "")
+            ),
         )
         return {
             "current_problem": problem.model_dump(mode="json"),
-            "current_problem_id": fp,
+            "current_problem_id": problem.problem_id,
             "recent_problem_hashes": [*recent, fp][-10:],
+            "recent_content_keys": [*seen_keys, key][-20:],
+            "recent_prompts": [*recent_prompts, problem.prompt][-6:],
         }
 
     return generate_problem

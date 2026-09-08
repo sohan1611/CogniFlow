@@ -44,7 +44,7 @@ from app.models.enums import StudentOutcome
 from app.rag.retriever import Retriever
 from app.services.demo_runner import seed_student
 from app.services.diagnostic import DiagnosticSession
-from app.services.events import EventLog
+from app.services.events import EventLog, EventType
 from app.services.student_store import StudentStore, student_id_from_name
 from app.tools.sandbox.runner import run_test_cases
 from app.tools.sandbox.subprocess_sandbox import SubprocessSandbox
@@ -206,6 +206,44 @@ def _serialise_events(events: EventLog, limit: int = 40) -> list[dict[str, Any]]
     ]
 
 
+_DIFFICULTY_ORDER = {"EASY": 0, "MEDIUM": 1, "HARD": 2}
+
+
+def _difficulty_change(events: EventLog) -> dict[str, Any] | None:
+    """The last time this student's level moved, and why.
+
+    Derived from the event log rather than tracked as extra state, because the log
+    already records the difficulty of every problem generated and the reason behind
+    every adaptation -- and two sources for one fact is how they come to disagree.
+
+    A student who is moved between levels without being told why has been handed a
+    harder problem for no visible reason, which reads as the system being arbitrary.
+    The reason is already computed by the policy guard; this only carries it out.
+    """
+    generated = [e for e in events.events if e.event_type == EventType.GENERATED]
+    if len(generated) < 2:
+        return None
+
+    before = str(generated[-2].payload.get("difficulty") or "")
+    after = str(generated[-1].payload.get("difficulty") or "")
+    if not before or not after or before == after:
+        return None
+
+    adaptations = [e for e in events.events if e.event_type == EventType.ADAPTATION]
+    rank_before = _DIFFICULTY_ORDER.get(before, -1)
+    rank_after = _DIFFICULTY_ORDER.get(after, -1)
+    return {
+        "from": before,
+        "to": after,
+        "direction": "up" if rank_after > rank_before else "down",
+        # The guard's own words. Not a rephrasing: if the displayed reason and the
+        # logged reason can drift, the one on screen stops being evidence.
+        "reason": adaptations[-1].decision_reason if adaptations else None,
+        "demands": generated[-1].payload.get("cognitive_level") or None,
+        "concepts": [c for c in str(generated[-1].payload.get("concepts") or "").split(",") if c],
+    }
+
+
 def _view(session: Session) -> dict[str, Any]:
     """Everything a frontend needs to draw the current moment."""
     snapshot = session.graph.get_state(session.cfg)
@@ -248,6 +286,7 @@ def _view(session: Session) -> dict[str, Any]:
         "returning_to": (values.get("prereq_return_stack") or [None])[0],
         "recommended_next": values.get("recommended_next_skill"),
         "session_status": values.get("session_status"),
+        "difficulty_change": _difficulty_change(session.events),
         "events": _serialise_events(session.events),
     }
 

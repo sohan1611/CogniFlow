@@ -13,9 +13,25 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
+const themeScript = `
+(() => {
+  try {
+    const theme = localStorage.getItem("cogniflow-theme");
+    if (theme === "light" || theme === "dark") {
+      document.documentElement.dataset.theme = theme;
+    } else {
+      document.documentElement.removeAttribute("data-theme");
+    }
+  } catch {}
+})();
+`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body>
         <main>{children}</main>
       </body>
