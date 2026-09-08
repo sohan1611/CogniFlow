@@ -11,18 +11,21 @@
  * feel, works in every browser, and cannot fail in a way that costs the user anything.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { Health } from "@/lib/api";
 
 /** Kept in step with the .glass-sweep animation in globals.css. */
 const SWEEP_MS = 620;
 
 export type Tab = "plan" | "learn" | "progress";
 
-const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: "plan", label: "Learning Plan", icon: "◎" },
-  { id: "learn", label: "Learn", icon: "✎" },
-  { id: "progress", label: "Progress", icon: "◷" },
+const TABS: { id: Tab; label: string; mobileLabel: string; icon: string }[] = [
+  { id: "plan", label: "Learning Plan", mobileLabel: "Plan", icon: "◎" },
+  { id: "learn", label: "Learn", mobileLabel: "Learn", icon: "✎" },
+  { id: "progress", label: "Progress", mobileLabel: "Progress", icon: "◷" },
 ];
+
+type HealthWithCorpus = Health & { corpus?: unknown };
 
 /** Swap a view behind a sheet of glass. */
 export function useGlassSwap() {
@@ -53,37 +56,97 @@ export function useGlassSwap() {
 export function Shell({
   tab,
   onTab,
+  onChangeName,
   name,
+  health,
   children,
   sweeping,
 }: {
   tab: Tab;
   onTab: (t: Tab) => void;
+  onChangeName: () => void;
   name: string | null;
+  health: Health | null;
   children: React.ReactNode;
   sweeping: boolean;
 }) {
-  const initials = (name ?? "")
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase())
-    .join("") || "··";
+  const [moreOpen, setMoreOpen] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const headerTriggerRef = useRef<HTMLButtonElement>(null);
+  const bottomTriggerRef = useRef<HTMLButtonElement>(null);
+  const dotTriggerRef = useRef<HTMLButtonElement>(null);
+  const lastTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  const initials = name
+    ? name
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((w) => w[0]?.toUpperCase())
+        .join("") || name[0]?.toUpperCase() || ""
+    : "";
+  const hasTemplateNotice = health?.generation === "deterministic-templates";
+
+  const openMore = (trigger: HTMLButtonElement | null) => {
+    lastTriggerRef.current = trigger;
+    setMoreOpen(true);
+  };
+
+  const closeMore = useCallback(() => {
+    setMoreOpen(false);
+    window.setTimeout(() => lastTriggerRef.current?.focus({ preventScroll: true }), 0);
+  }, []);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    window.setTimeout(() => dialogRef.current?.focus({ preventScroll: true }), 0);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMore();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [closeMore, moreOpen]);
+
+  const changeName = () => {
+    closeMore();
+    onChangeName();
+  };
 
   return (
     <>
       {sweeping && <div className="glass-sweep" aria-hidden />}
       <div className="shell">
         <header className="topbar">
-          <div className="wordmark">
-            Cogni<span>Flow</span>
+          <div className="brand">
+            <div className="brand-tile" aria-hidden>
+              CF
+            </div>
+            <div className="brand-copy">
+              <div className="wordmark">
+                Cogni<span>Flow</span>
+                {hasTemplateNotice && (
+                  <button
+                    ref={dotTriggerRef}
+                    type="button"
+                    className="engine-dot"
+                    aria-label="Built-in templates status"
+                    aria-expanded={moreOpen}
+                    aria-haspopup="dialog"
+                    onClick={() => openMore(dotTriggerRef.current)}
+                  >
+                    <span aria-hidden />
+                  </button>
+                )}
+              </div>
+              <p className="tagline">AI-powered adaptive learning</p>
+            </div>
           </div>
 
           <nav className="nav" aria-label="Sections">
             {TABS.map((t) => (
               <button
                 key={t.id}
-                aria-current={tab === t.id}
+                aria-current={tab === t.id ? "page" : undefined}
                 onClick={() => onTab(t.id)}
                 disabled={!name}
                 title={!name ? "Tell me your name first" : undefined}
@@ -94,21 +157,140 @@ export function Shell({
             ))}
           </nav>
 
-          <div className="who">
-            <div className="avatar" aria-hidden>{initials}</div>
-            <div>
-              <b>{name ?? "Not signed in"}</b>
+          <button
+            ref={headerTriggerRef}
+            type="button"
+            className="who"
+            aria-label="Open learner and engine status"
+            aria-expanded={moreOpen}
+            aria-haspopup="dialog"
+            onClick={() => openMore(headerTriggerRef.current)}
+          >
+            <span className="avatar" aria-hidden>
+              {name ? initials : "👤"}
+            </span>
+            <span className="who-text">
+              <b>{name ?? "No learner yet"}</b>
               {/* No email: there are no accounts, and inventing one on screen would be
                   the first dishonest pixel in the product. */}
               <small>{name ? "learner" : "enter a name to begin"}</small>
-            </div>
-          </div>
+            </span>
+          </button>
         </header>
 
         <div className="plate" style={{ viewTransitionName: "plate" }}>
           {children}
         </div>
       </div>
+
+      <nav className="bottom-nav" aria-label="Sections">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            aria-current={tab === t.id ? "page" : undefined}
+            onClick={() => onTab(t.id)}
+            disabled={!name}
+            title={!name ? "Tell me your name first" : undefined}
+          >
+            <span aria-hidden>{t.icon}</span>
+            {t.mobileLabel}
+          </button>
+        ))}
+        <button
+          ref={bottomTriggerRef}
+          type="button"
+          className={moreOpen ? "open" : undefined}
+          aria-expanded={moreOpen}
+          aria-haspopup="dialog"
+          onClick={() => openMore(bottomTriggerRef.current)}
+        >
+          <span aria-hidden>•••</span>
+          More
+        </button>
+      </nav>
+
+      {moreOpen && (
+        <MoreSheet
+          dialogRef={dialogRef}
+          name={name}
+          initials={initials}
+          health={health}
+          onClose={closeMore}
+          onChangeName={changeName}
+        />
+      )}
     </>
+  );
+}
+
+function MoreSheet({
+  dialogRef,
+  name,
+  initials,
+  health,
+  onClose,
+  onChangeName,
+}: {
+  dialogRef: React.RefObject<HTMLDivElement | null>;
+  name: string | null;
+  initials: string;
+  health: Health | null;
+  onClose: () => void;
+  onChangeName: () => void;
+}) {
+  const providersPresent = (health?.providers.length ?? 0) > 0;
+  const generationText = !health
+    ? "Checking engine status"
+    : providersPresent
+      ? "Live model generation"
+      : "Built-in templates. Every tutoring decision is still computed exactly as it would be live; only the exercise wording is templated.";
+  const corpus =
+    health && typeof (health as HealthWithCorpus).corpus === "string"
+      ? String((health as HealthWithCorpus).corpus)
+      : null;
+
+  return (
+    <div className="more-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div
+        ref={dialogRef}
+        className="more-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="more-title"
+        tabIndex={-1}
+      >
+        <div className="sheet-head">
+          <h2 id="more-title">More</h2>
+          <button type="button" className="sheet-close" aria-label="Close more sheet" onClick={onClose}>
+            ×
+          </button>
+        </div>
+
+        <section className="more-section">
+          <div className="who-row">
+            <span className="avatar" aria-hidden>
+              {name ? initials : "👤"}
+            </span>
+            <div>
+              <h3>{name ?? "No learner yet"}</h3>
+              <p className="muted">learner</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="more-section">
+          <button type="button" className="sheet-action" onClick={onChangeName}>
+            Change name
+          </button>
+        </section>
+
+        <section className="more-section">
+          <h3>Engine status</h3>
+          <p className="muted">{generationText}</p>
+          {corpus && corpus !== "ready" && <p className="muted">Corpus: {corpus}</p>}
+        </section>
+      </div>
+    </div>
   );
 }

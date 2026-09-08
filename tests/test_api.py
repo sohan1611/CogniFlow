@@ -8,6 +8,7 @@ meaning what they mean.
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -454,3 +455,45 @@ def test_progress_reports_the_evidence_not_just_the_estimate(client: TestClient)
 
     masteries = [s["mastery"] for s in progress["skills"]]
     assert masteries == sorted(masteries), "weakest first is the useful order here"
+
+
+def test_activity_returns_instants_not_buckets(client: TestClient) -> None:
+    """The heatmap answers "when do I study?", which is a question about the student's
+    own clock.
+
+    Someone in IST working at 9pm local is at 15:30 UTC. A server-side hourly bucket
+    would file that under afternoon and tell them, confidently and wrongly, that they
+    study in the afternoon. Only the browser knows the offset, so the server hands over
+    instants and the client buckets them.
+    """
+    client.post("/session", json={"name": "Tara"})
+    client.post("/session/tara/start", json={"name": "Tara", "target_skill": "recursion"})
+    client.post("/session/tara/submit", json={"code": "def f(n):\n    return n\n\nprint(f(1))"})
+
+    body = client.get("/student/tara/activity").json()
+    assert body["total"] >= 1, "a submitted attempt must appear in study activity"
+
+    for row in body["attempts"]:
+        assert {"at", "skill", "outcome", "correct"} <= set(row)
+        when = datetime.fromisoformat(row["at"])
+        assert when.tzinfo is not None, (
+            "a naive timestamp cannot be converted to the student's local time, which "
+            "is the only thing this endpoint exists to enable"
+        )
+
+
+def test_activity_is_bounded_by_the_window_it_advertises(client: TestClient) -> None:
+    """`days` must actually bound the result, or a long-lived student's dashboard grows
+    without limit."""
+    client.post("/session", json={"name": "Tara"})
+    client.post("/session/tara/start", json={"name": "Tara", "target_skill": "recursion"})
+    client.post("/session/tara/submit", json={"code": "print(1)"})
+
+    window = client.get("/student/tara/activity", params={"days": 120}).json()
+    since = datetime.fromisoformat(window["since"])
+    for row in window["attempts"]:
+        assert datetime.fromisoformat(row["at"]) >= since
+
+
+def test_activity_404s_for_an_unknown_student(client: TestClient) -> None:
+    assert client.get("/student/nobody-at-all/activity").status_code == 404

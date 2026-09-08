@@ -61,11 +61,17 @@ export function LearningPlan({
       !query.trim() ||
       pretty(s.skill).toLowerCase().includes(query.trim().toLowerCase()),
   );
+  const unlocked = plan.counts.total - plan.counts.upcoming;
 
   // Draw the prerequisite edges between the cards actually on screen. Measured from
   // the DOM rather than hard-coded, so the lines stay correct when the grid reflows.
   useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 768px)");
     const draw = () => {
+      if (!desktop.matches) {
+        setEdges([]);
+        return;
+      }
       const grid = gridRef.current;
       if (!grid) return;
       const base = grid.getBoundingClientRect();
@@ -96,7 +102,11 @@ export function LearningPlan({
     };
     draw();
     window.addEventListener("resize", draw);
-    return () => window.removeEventListener("resize", draw);
+    desktop.addEventListener("change", draw);
+    return () => {
+      window.removeEventListener("resize", draw);
+      desktop.removeEventListener("change", draw);
+    };
   }, [shown.length, query, plan.student_id]);
 
   return (
@@ -124,16 +134,22 @@ export function LearningPlan({
             <b>{plan.counts.done}</b>
             <span>DONE</span>
           </div>
-          {plan.counts.provisional > 0 && (
-            <div className="stat maybe" title="Answered well once — not confirmed yet">
-              <b>{plan.counts.provisional}</b>
-              <span>LOOKS GOOD</span>
-            </div>
-          )}
+          <div className="stat maybe" title="Answered well once — not confirmed yet">
+            <b>{plan.counts.provisional}</b>
+            <span>LOOKS GOOD</span>
+          </div>
           <div className="stat">
             <b>{plan.counts.upcoming}</b>
             <span>UPCOMING</span>
           </div>
+        </div>
+
+        <div className="flow-head">
+          <span>
+            <i aria-hidden />
+            CURRICULUM FLOW
+          </span>
+          <span>{unlocked} of {plan.counts.total} unlocked</span>
         </div>
 
         <div className="plan" ref={gridRef}>
@@ -142,25 +158,47 @@ export function LearningPlan({
               <path key={i} d={d} />
             ))}
           </svg>
-          {shown.map((skill) => (
-            <SkillCard
-              key={skill.skill}
-              skill={skill}
-              active={skill.skill === activeSkill}
-              // Suppressed while a skill is in flight. Two cards competing for "do this
-              // next" is worse than none, and the honest next step for someone mid-topic
-              // is to finish it.
-              suggested={!activeSkill && skill.skill === plan.suggested_next}
-              onStart={() => onStart(skill.skill)}
-              busy={busy}
-            />
-          ))}
+          {shown.map((skill, index) => {
+            const active = skill.skill === activeSkill;
+            const suggested = !activeSkill && skill.skill === plan.suggested_next;
+            const nextCompleted = shown[index + 1]?.state === "completed";
+            return (
+              <div
+                className={`spine-item spine-${active ? "active" : skill.state}${
+                  skill.state === "completed" ? " spine-completed" : ""
+                }${skill.state === "completed" && nextCompleted ? " spine-continues" : ""}`}
+                key={skill.skill}
+              >
+                <div className="spine-node" aria-hidden>
+                  {spineGlyph(skill, active)}
+                </div>
+                <SkillCard
+                  skill={skill}
+                  active={active}
+                  // Suppressed while a skill is in flight. Two cards competing for "do this
+                  // next" is worse than none, and the honest next step for someone mid-topic
+                  // is to finish it.
+                  suggested={suggested}
+                  onStart={() => onStart(skill.skill)}
+                  busy={busy}
+                />
+              </div>
+            );
+          })}
         </div>
       </section>
 
       <ActivityPanel events={events} />
     </div>
   );
+}
+
+function spineGlyph(skill: PlanSkill, active: boolean) {
+  if (active) return "▶";
+  if (skill.state === "completed") return "✓";
+  if (skill.state === "provisional") return "◐";
+  if (skill.state === "locked") return "🔒";
+  return "+";
 }
 
 function SkillCard({
@@ -179,6 +217,23 @@ function SkillCard({
   const locked = skill.state === "locked";
   const done = skill.state === "completed";
   const provisional = skill.state === "provisional";
+  const statusClass = done
+    ? "chip done"
+    : active
+      ? "chip now"
+      : provisional
+        ? "chip maybe"
+        : "chip";
+  const statusLabel = done
+    ? "Completed"
+    : active
+      ? "In progress"
+      : provisional
+        ? "Looks good ◐"
+        : locked
+          ? "Upcoming"
+          : "Ready";
+  const statusTitle = provisional ? "Answered well once — one more to be sure" : undefined;
   return (
     <article
       className={`card${active ? " active" : ""}${locked ? " locked" : ""}${
@@ -193,11 +248,15 @@ function SkillCard({
           student was given had nowhere to land. Same words as the summary screen, on
           purpose: they are meant to be recognised, not re-read. */}
       {suggested && <p className="flag">Start here</p>}
+      {active && <p className="flag active-now">Active now</p>}
 
       <div className="top">
         <h3>{pretty(skill.skill)}</h3>
+        <span className={`${statusClass} status-mobile`} title={statusTitle}>
+          {statusLabel}
+        </span>
         {active ? (
-          <button className="play" onClick={onStart} disabled={busy} aria-label="Continue">
+          <button className="play top-play" onClick={onStart} disabled={busy} aria-label="Continue">
             ▶
           </button>
         ) : (
@@ -228,24 +287,19 @@ function SkillCard({
       </div>
 
       <div className="foot" style={{ marginTop: 12 }}>
-        {done ? (
-          <span className="chip done">Completed 👏</span>
-        ) : active ? (
-          <span className="chip now">In progress</span>
-        ) : provisional ? (
-          /* One right answer is evidence, not a finished topic. Saying so is the whole
-             difference between a tutor and a progress bar. */
-          <span className="chip maybe" title="Answered well once — one more to be sure">
-            Looks good ◐
-          </span>
-        ) : locked ? (
-          <span className="chip">Upcoming ⏱</span>
-        ) : (
-          <span className="chip">Ready</span>
-        )}
+        {/* One right answer is evidence, not a finished topic. Saying so is the whole
+           difference between a tutor and a progress bar. */}
+        <span className={`${statusClass} status-desktop`} title={statusTitle}>
+          {statusLabel}
+        </span>
 
-        <div className="row" style={{ gap: 6 }}>
-          <span className="muted">{(skill.mastery * 100).toFixed(0)}%</span>
+        <div className="row skill-action" style={{ gap: 6 }}>
+          <span className="muted">{(skill.mastery * 100).toFixed(0)}% mastery</span>
+          {active && (
+            <button className="play mobile-play" onClick={onStart} disabled={busy} aria-label="Continue">
+              ▶
+            </button>
+          )}
           {!locked && !active && (
             <button
               className={`iconbtn solid${suggested ? " go" : ""}`}

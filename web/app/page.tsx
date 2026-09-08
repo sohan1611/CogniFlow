@@ -165,9 +165,33 @@ export default function Page() {
       swap(() => setTab(next));
     });
 
+  const changeName = () => {
+    swap(() => {
+      setStage("name");
+      setTab("plan");
+      setName("");
+      setId("");
+      setView(null);
+      setPlan(null);
+      setProgress(null);
+      setStep(null);
+      setHints([]);
+      setShown(0);
+      setCode("");
+      setError(null);
+    });
+  };
+
   // -------------------------------------------------------------- render
   return (
-    <Shell tab={tab} onTab={changeTab} name={stage === "name" ? null : name} sweeping={sweeping}>
+    <Shell
+      tab={tab}
+      onTab={changeTab}
+      onChangeName={changeName}
+      name={stage === "name" ? null : name}
+      health={health}
+      sweeping={sweeping}
+    >
       {reachable === null && waking && (
         <div className="note">
           <strong>Waking the tutoring engine</strong>
@@ -186,7 +210,7 @@ export default function Page() {
       )}
 
       {health && health.generation !== "live" && (
-        <div className="note warn">
+        <div className="note warn templates-banner">
           <strong>Running on built-in templates</strong>
           No model provider is configured, so exercise wording is templated. Every
           tutoring decision below is still computed exactly as it would be live.
@@ -195,37 +219,79 @@ export default function Page() {
       {error && <p className="err">{error}</p>}
 
       {stage === "name" && (
-        <div style={{ maxWidth: 460, margin: "8vh auto 0" }}>
-          <h1>Let&apos;s begin</h1>
-          <p className="sub" style={{ marginBottom: 22 }}>
-            A tutor that changes its own objective when it works out <em>why</em> you are
-            failing.
+        <div className="hero">
+          <div className="hero-pill">AI Tutor</div>
+          <h1>
+            Your personalized
+            <br />
+            learning journey starts here.
+          </h1>
+          <p className="sub">
+            We&apos;ll find what you know, spot the gaps underneath, and pick your next
+            challenge from there.
           </p>
-          <label htmlFor="nm">What should I call you?</label>
-          <input
-            id="nm"
-            type="text"
-            value={name}
-            placeholder="e.g. Aarav"
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && name.trim() && begin()}
-          />
-          <p className="muted" style={{ margin: ".7rem 0 1.2rem" }}>
-            Used to remember what you know between visits. Nothing else is stored.
-          </p>
-          <button
-            className="btn"
-            onClick={begin}
-            disabled={busy || !name.trim() || reachable !== true}
-          >
-            {busy
-              ? "Starting…"
-              : reachable === false
-                ? "Engine offline"
-                : reachable === null
-                  ? "Waking the engine…"
-                  : "Start"}
-          </button>
+
+          <div className="step-strip" aria-label="Tutor flow">
+            <span>Assess</span>
+            <span>Understand</span>
+            <span>Adapt</span>
+            <span>Improve</span>
+          </div>
+
+          <div className="name-block">
+            <label htmlFor="nm">What should I call you?</label>
+            <p className="muted">We&apos;ll use your name to remember what you know between visits.</p>
+            <div className="name-field">
+              <span aria-hidden>👤</span>
+              <input
+                id="nm"
+                type="text"
+                value={name}
+                placeholder="Enter your name"
+                inputMode="text"
+                autoComplete="given-name"
+                enterKeyHint="go"
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && name.trim() && begin()}
+              />
+            </div>
+            <button
+              className="btn hero-cta"
+              onClick={begin}
+              disabled={busy || !name.trim() || reachable !== true}
+            >
+              {busy
+                ? "Starting…"
+                : reachable === false
+                  ? "Engine offline"
+                  : reachable === null
+                    ? "Waking the engine…"
+                    : "Start Learning"}
+            </button>
+          </div>
+
+          <div className="feature-grid">
+            <article className="feature">
+              <span aria-hidden>◎</span>
+              <h3>Personalized</h3>
+              <p className="muted">Adapts to your strengths and gaps</p>
+            </article>
+            <article className="feature">
+              <span aria-hidden>✎</span>
+              <h3>Practice</h3>
+              <p className="muted">Real code, run against real tests</p>
+            </article>
+            <article className="feature">
+              <span aria-hidden>◷</span>
+              <h3>Progress</h3>
+              <p className="muted">Track what you have actually shown</p>
+            </article>
+            <article className="feature">
+              <span aria-hidden>✦</span>
+              <h3>AI Tutor</h3>
+              <p className="muted">Guidance the moment you are stuck</p>
+            </article>
+          </div>
         </div>
       )}
 
@@ -377,7 +443,7 @@ function Learn({
               <h3>{view.problem.title}</h3>
               <span className="chip">{view.difficulty}</span>
             </div>
-            <p className="desc" style={{ whiteSpace: "pre-wrap" }}>{view.problem.prompt}</p>
+            <p className="exercise-prompt">{view.problem.prompt}</p>
             {view.problem.expected_output && (
               <p className="muted">
                 Expected output: <code>{view.problem.expected_output}</code>

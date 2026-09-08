@@ -24,6 +24,7 @@ import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -498,6 +499,55 @@ def learning_plan(student_id: str) -> dict[str, Any]:
             ),
         },
         "skills": plan,
+    }
+
+
+@app.get("/student/{student_id}/activity")
+def activity(student_id: str, days: int = 120) -> dict[str, Any]:
+    """Every attempt's timestamp, for a study-activity heatmap.
+
+    Returns RAW UTC timestamps rather than day or hour buckets, and that is the whole
+    design decision here. "When do I study?" is a question about the student's own
+    clock -- someone in IST doing an exercise at 9pm local is at 15:30 UTC, and a
+    server-side hourly bucket would file it under afternoon and quietly tell them they
+    study in the afternoon. Only the browser knows the offset, so only the browser may
+    bucket. The server's job is to hand over correct instants.
+
+    Volume is not a concern at this scale: a student has tens of attempts, not
+    thousands, and `days` bounds it regardless.
+    """
+    store = StudentStore()
+    if not store.exists(student_id):
+        raise HTTPException(404, f"no student {student_id!r}")
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max(1, days))
+    rows = []
+    for row in store.attempts_for(student_id):
+        try:
+            when = datetime.fromisoformat(row["created_at"])
+        except (TypeError, ValueError):
+            # A row we cannot place in time cannot go on a calendar. Skipping it is
+            # right; guessing a date for it would be inventing study history.
+            continue
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        if when < cutoff:
+            continue
+        rows.append(
+            {
+                "at": when.isoformat(),
+                "skill": row["skill"],
+                "outcome": row["outcome"],
+                "correct": row["outcome"] == StudentOutcome.CORRECT.value,
+            }
+        )
+
+    return {
+        "student_id": student_id,
+        "days": days,
+        "since": cutoff.isoformat(),
+        "attempts": rows,
+        "total": len(rows),
     }
 
 
