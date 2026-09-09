@@ -41,13 +41,11 @@ export const pretty = (s: string) => LABELS[s] ?? s.replace(/_/g, " ");
 
 export function LearningPlan({
   plan,
-  events,
   activeSkill,
   onStart,
   busy,
 }: {
   plan: Plan;
-  events: TutorEvent[];
   activeSkill: string | null;
   onStart: (skill: string) => void;
   busy: boolean;
@@ -187,8 +185,6 @@ export function LearningPlan({
           })}
         </div>
       </section>
-
-      <ActivityPanel events={events} />
     </div>
   );
 }
@@ -345,7 +341,7 @@ const ICON: Record<string, string> = {
   prereq_redirect: "↩", prereq_return: "↪", recovery: "🩹", session_end: "🏁",
 };
 
-function ActivityPanel({ events }: { events: TutorEvent[] }) {
+export function ActivityPanel({ events }: { events: TutorEvent[] }) {
   const recent = [...events].reverse().slice(0, 8);
   return (
     <aside className="panel">

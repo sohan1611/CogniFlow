@@ -18,11 +18,12 @@ import {
   type Health,
   type Plan,
   type Progress,
+  type TutorEvent,
   type TutorView,
 } from "@/lib/api";
 import { StudentDashboard } from "./dashboard";
 import { CodeEditor } from "./editor";
-import { LearningPlan, pretty } from "./plan";
+import { ActivityPanel, LearningPlan, pretty } from "./plan";
 import { Shell, type Tab, useGlassSwap } from "./shell";
 
 type Stage = "name" | "diagnostic" | "app";
@@ -165,6 +166,10 @@ export default function Page() {
   const changeTab = (next: Tab) =>
     guard(async () => {
       if (next === "plan") setPlan(await api.plan(id));
+      // The detail view reads the diagnoses off the student profile, so it needs the
+      // same fetch Progress does -- otherwise it shows whatever was cached from a
+      // Progress visit that may never have happened.
+      if (next === "detail") setProgress(await api.progress(id));
       if (next === "progress") {
         const [nextProgress, nextActivity] = await Promise.all([
           api.progress(id),
@@ -364,7 +369,6 @@ export default function Page() {
       {stage === "app" && tab === "plan" && plan && (
         <LearningPlan
           plan={plan}
-          events={view?.events ?? []}
           activeSkill={view?.awaiting_student ? view.target_skill : null}
           onStart={startSkill}
           busy={busy}
@@ -382,6 +386,10 @@ export default function Page() {
           exhausted={shown > 0 && shown >= hints.length}
           busy={busy}
         />
+      )}
+
+      {stage === "app" && tab === "detail" && (
+        <DetailView events={view?.events ?? []} progress={progress} />
       )}
 
       {stage === "app" && tab === "progress" && progress && activity && (
@@ -566,6 +574,66 @@ const STANDING_LABEL: Record<string, string> = {
   unproven: "Not shown yet",
 };
 
+/* The tutor's own working notes, kept off every student-facing screen.
+ *
+ * This was previously a permanent right-hand panel on the learning plan, which meant a
+ * learner opening the app was shown problem_id=d7f3d5800286, teaching_mode=TEXTUAL,
+ * before=0.2444, and a paragraph beginning "The student believes that...". Telemetry
+ * addressed to a developer, and a diagnosis written about them in the third person.
+ *
+ * None of it is deleted, because it is the best evidence this system has that its
+ * decisions are reasoned rather than random -- it just belongs somewhere a student
+ * chooses to go, framed as what it is. */
+function DetailView({
+  events,
+  progress,
+}: {
+  events: TutorEvent[];
+  progress: Progress | null;
+}) {
+  const open = (progress?.skills ?? []).flatMap((s) =>
+    s.misconceptions.map((m) => ({ skill: s.skill, text: m })),
+  );
+  const past = (progress?.skills ?? []).flatMap((s) =>
+    s.overcome.map((m) => ({ skill: s.skill, text: m })),
+  );
+
+  return (
+    <div className="columns">
+      <section>
+        <h1>Session detail</h1>
+        <p className="sub" style={{ marginBottom: 18 }}>
+          The tutor&apos;s working notes. These are written for diagnosis rather than as
+          feedback, so they talk about you in the third person — that is why they live
+          here and not on your plan.
+        </p>
+
+        <h2 style={{ margin: "18px 0 10px" }}>What it diagnosed</h2>
+        {open.length === 0 && past.length === 0 && (
+          <div className="note">
+            Nothing diagnosed yet. Notes appear here after the tutor has seen enough of
+            your work to have an opinion about it.
+          </div>
+        )}
+        {open.map((m, i) => (
+          <div className="note warn" key={`o${i}`}>
+            <strong>Open · {pretty(m.skill)}</strong>
+            {m.text}
+          </div>
+        ))}
+        {past.map((m, i) => (
+          <div className="note good" key={`p${i}`}>
+            <strong>Resolved · {pretty(m.skill)}</strong>
+            {m.text}
+          </div>
+        ))}
+      </section>
+
+      <ActivityPanel events={events} />
+    </div>
+  );
+}
+
 function ProgressView({ progress, activity }: { progress: Progress; activity: Activity }) {
   const overcome = progress.skills.flatMap((s) =>
     s.overcome.map((m) => ({ skill: s.skill, text: m })),
@@ -636,21 +704,28 @@ function ProgressView({ progress, activity }: { progress: Progress; activity: Ac
           </div>
         ))}
 
+        {/* The prose here is the diagnoser's own wording -- "The student believes that
+            Python function definitions require a return type..." -- written ABOUT a
+            learner for the tutor's benefit, in the third person. Reading a clinical
+            write-up of yourself is a bad moment, so the sentences moved to the session
+            detail view where that voice is the point. What stays is the fact, in the
+            second person, which is what a student can actually act on. */}
         {(overcome.length > 0 || active.length > 0) && (
           <>
-            <h2 style={{ margin: "22px 0 12px" }}>Misconceptions</h2>
-            {overcome.map((m, i) => (
-              <div className="note good" key={`o${i}`}>
-                <strong>Overcome · {pretty(m.skill)}</strong>
-                {m.text}
+            <h2 style={{ margin: "22px 0 12px" }}>Sticking points</h2>
+            {overcome.length > 0 && (
+              <div className="note good">
+                <strong>You have grown out of {overcome.length}</strong>
+                {[...new Set(overcome.map((m) => pretty(m.skill)))].join(", ")}
               </div>
-            ))}
-            {active.map((m, i) => (
-              <div className="note warn" key={`a${i}`}>
-                <strong>Still working on · {pretty(m.skill)}</strong>
-                {m.text}
+            )}
+            {active.length > 0 && (
+              <div className="note warn">
+                <strong>Still working on</strong>
+                {[...new Set(active.map((m) => pretty(m.skill)))].join(", ")} — the tutor
+                is targeting these next. Its notes are in Session detail, under More.
               </div>
-            ))}
+            )}
           </>
         )}
       </section>

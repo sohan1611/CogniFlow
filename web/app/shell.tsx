@@ -17,7 +17,11 @@ import type { Health } from "@/lib/api";
 /** Kept in step with the .glass-sweep animation in globals.css. */
 const SWEEP_MS = 620;
 
-export type Tab = "plan" | "learn" | "progress";
+/** "detail" is deliberately NOT in TABS. It is the tutor's own working notes -- the
+ *  decision trail and its diagnoses -- which are written ABOUT a student rather than to
+ *  them, so it is reachable from the More sheet and never occupies a bottom-bar slot a
+ *  learner has to walk past. */
+export type Tab = "plan" | "learn" | "progress" | "detail";
 type ThemeChoice = "light" | "dark" | "system";
 
 const TABS: { id: Tab; label: string; mobileLabel: string; icon: string }[] = [
@@ -257,6 +261,10 @@ export function Shell({
           onClose={closeMore}
           onChangeName={changeName}
           onTheme={applyTheme}
+          onOpenDetail={() => {
+            closeMore();
+            onTab("detail");
+          }}
         />
       )}
     </>
@@ -272,6 +280,7 @@ function MoreSheet({
   onClose,
   onChangeName,
   onTheme,
+  onOpenDetail,
 }: {
   dialogRef: React.RefObject<HTMLDivElement | null>;
   name: string | null;
@@ -281,6 +290,7 @@ function MoreSheet({
   onClose: () => void;
   onChangeName: () => void;
   onTheme: (theme: ThemeChoice) => void;
+  onOpenDetail: () => void;
 }) {
   const providersPresent = (health?.providers.length ?? 0) > 0;
   const generationText = !health
@@ -343,6 +353,17 @@ function MoreSheet({
               </button>
             ))}
           </div>
+        </section>
+
+        <section className="more-section">
+          <h3>Session detail</h3>
+          <p className="muted">
+            Every decision the tutor made this session, and the notes it wrote while
+            diagnosing your work.
+          </p>
+          <button type="button" className="sheet-action" onClick={onOpenDetail}>
+            Open session detail
+          </button>
         </section>
 
         <section className="more-section">
