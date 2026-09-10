@@ -481,8 +481,12 @@ def hints(student_id: str, req: SubmitRequest) -> dict[str, Any]:
     session = _session(student_id)
     snapshot = session.graph.get_state(session.cfg)
     skill = str(snapshot.values.get("target_skill") or "")
-    ladder = hints_for(skill, req.code or None)
-    return {"skill": skill, "hints": list(ladder)}
+    # The difficulty matters as much as the skill. Without it, an EASY base-case
+    # exercise and a HARD divide-and-conquer one got the same two sentences, which is
+    # what a student noticed and reported.
+    difficulty = str(snapshot.values.get("difficulty_level") or "") or None
+    ladder = hints_for(skill, req.code or None, difficulty)
+    return {"skill": skill, "difficulty": difficulty, "hints": list(ladder)}
 
 
 @app.get("/student/{student_id}/plan")

@@ -355,12 +355,57 @@ def student_note_for(pattern: Pattern, code: str | None = None) -> str:
     return pattern.student_note
 
 
-def hints_for(skill: str, code: str | None = None) -> tuple[str, ...]:
-    """The hint ladder to offer a student stuck on `skill`."""
+def hints_for(
+    skill: str, code: str | None = None, difficulty: str | None = None
+) -> tuple[str, ...]:
+    """The hint ladder to offer a student stuck on `skill`.
+
+    Three sources, most specific first.
+
+    1. What they have WRITTEN. A draft with a recognisable mistake in it earns a hint
+       about that mistake, and nothing else comes close for usefulness.
+    2. What they have been ASKED. Reported by a student: every recursion problem gave
+       the same two hints. It did -- with an empty editor there was no draft to read,
+       so this fell straight to a fixed pair per skill, and an EASY base-case exercise
+       and a HARD divide-and-conquer one were handed identical advice. The rung knows
+       what its level actually demands, so a blank editor can still get a hint aimed at
+       THIS problem.
+    3. The skill alone, when neither of the above says anything.
+    """
     if code is not None:
         facts = analyse_draft(code)
         for fact, pattern_key in HINT_DRAFT_SIGNATURES:
             if getattr(facts, fact):
                 return next(p for p in PATTERNS if p.key == pattern_key).hints
 
+    if difficulty:
+        rung_hints = _hints_from_rung(skill, difficulty)
+        if rung_hints:
+            return rung_hints
+
     return SKILL_HINTS.get(skill, GENERIC_HINTS)
+
+
+def _hints_from_rung(skill: str, difficulty: str) -> tuple[str, ...]:
+    """A ladder built from what this difficulty actually asks for.
+
+    Imported lazily: misconceptions.py is imported by the sandbox path, and the
+    difficulty ladder has no business being pulled in there.
+    """
+    try:
+        from app.mastery.difficulty import rung_for
+        from app.models.enums import Difficulty
+
+        rung = rung_for(skill, Difficulty(str(difficulty)))
+    except (ImportError, ValueError):
+        return ()
+
+    if not rung.demands:
+        return ()
+
+    base = SKILL_HINTS.get(skill, GENERIC_HINTS)
+    return (
+        f"This one is asking for {rung.demands}. Start there.",
+        base[0],
+        *base[1:],
+    )

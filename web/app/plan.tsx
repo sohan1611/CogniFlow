@@ -84,16 +84,29 @@ export function LearningPlan({
         for (const prereq of item.prerequisites) {
           const from = box(prereq);
           if (!from) continue;
-          const x1 = from.right - base.left;
           const y1 = from.top - base.top + from.height / 2;
           const x2 = to.left - base.left;
           const y2 = to.top - base.top + to.height / 2;
-          const mid = x1 + (x2 - x1) / 2;
-          paths.push(
-            x2 > x1
-              ? `M ${x1} ${y1} H ${mid} V ${y2} H ${x2}`
-              : `M ${x1} ${y1} H ${x1 + 16} V ${(y1 + y2) / 2} H ${x2 - 16} V ${y2} H ${x2}`,
-          );
+
+          if (to.left - base.left > from.right - base.left) {
+            // Target is to the right: a plain elbow through the gap between them
+            // never touches a card.
+            const x1 = from.right - base.left;
+            const mid = x1 + (x2 - x1) / 2;
+            paths.push(`M ${x1} ${y1} H ${mid} V ${y2} H ${x2}`);
+          } else {
+            // Target is to the LEFT or directly below. The old path exited right, ran
+            // back across at (y1+y2)/2, and cut straight through whatever card sat
+            // between the two -- a dashed line through the middle of an unrelated
+            // skill, which is what a prerequisite arrow must never look like.
+            //
+            // Leave by the source's LEFT edge instead and run down the gutter outside
+            // the grid, where there is nothing to cross. The SVG is overflow:visible,
+            // so a negative x is drawable.
+            const x1 = from.left - base.left;
+            const gutter = -14;
+            paths.push(`M ${x1} ${y1} H ${gutter} V ${y2} H ${x2}`);
+          }
         }
       }
       setEdges(paths);

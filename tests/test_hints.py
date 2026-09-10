@@ -144,3 +144,41 @@ def test_unparseable_drafts_are_handled_not_crashed() -> None:
     facts = analyse_draft("def broken(:\n    this is not python")
     assert facts.parses is False and facts.recursive is False
     assert hints_for("functions", "def broken(:")  # still returns a usable ladder
+
+
+def test_the_same_skill_at_different_levels_gets_different_hints() -> None:
+    """Reported by a student: every recursion problem gave the same two hints.
+
+    It did. With an empty editor there was no draft to read, so hint selection fell
+    straight to a fixed pair per skill -- and an EASY base-case exercise and a HARD
+    divide-and-conquer one were handed identical advice. The rung knows what its level
+    demands, so a blank editor can still get a hint aimed at THIS problem.
+    """
+    from app.mastery.misconceptions import hints_for
+
+    first = {
+        level: hints_for("recursion", None, level)[0]
+        for level in ("EASY", "MEDIUM", "HARD")
+    }
+    assert len(set(first.values())) == 3, f"levels still share a hint: {first}"
+
+
+def test_what_they_wrote_still_beats_what_they_were_asked() -> None:
+    """A recognisable mistake in the draft is the most useful thing available, and
+    adding a difficulty signal must not demote it."""
+    from app.mastery.misconceptions import hints_for
+
+    printed = "def double(n):\n    print(n * 2)\n\ndouble(6)"
+    from_draft = hints_for("functions", printed, "HARD")
+    from_level = hints_for("functions", None, "HARD")
+    assert from_draft != from_level
+    assert "asking for" not in from_draft[0], "the draft hint was replaced by the rung one"
+
+
+def test_an_unknown_difficulty_falls_back_rather_than_raising() -> None:
+    """`difficulty` arrives as a string off graph state and may be absent or junk."""
+    from app.mastery.misconceptions import hints_for
+
+    baseline = hints_for("loops")
+    assert hints_for("loops", None, None) == baseline
+    assert hints_for("loops", None, "NONSENSE") == baseline
