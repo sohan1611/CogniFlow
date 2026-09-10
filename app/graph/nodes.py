@@ -599,6 +599,43 @@ def make_generate_problem(deps: GraphDeps) -> Node:
                 + (" (repeat -- could not produce a new one)" if repeated else "")
             ),
         )
+        if not _is_usable(problem):
+            # Nothing here can be marked. Serving it anyway is the trap: the student
+            # gets a Submit button under a non-problem, and because there are no test
+            # cases `all_passed` is False for ANY submission -- which is a
+            # StudentOutcome, so it lowers their mastery and can send them into a
+            # prerequisite they do not need. Being penalised for a problem that was
+            # never set is the worst failure this system has available.
+            #
+            # Reachable when a non-Python language is active and every provider in the
+            # chain failed for this request: there is no authored offline ladder for
+            # that language, and inventing one would mean serving a Python task under
+            # another language's name.
+            #
+            # Halting is honest and costs the student nothing. Their mastery is
+            # untouched, the session says why, and they can start again once a provider
+            # answers.
+            deps.events.emit(
+                "generate_problem",
+                EventType.RECOVERY,
+                {"skill": skill, "language": language.value, "degraded": degraded},
+                reason=(
+                    f"could not author a gradeable {language.value.title()} exercise: "
+                    "no model was reachable and there is no offline ladder for this "
+                    "language. Ending the session rather than serving a problem that "
+                    "cannot be marked."
+                ),
+            )
+            return {
+                "session_status": SessionStatus.HALTED_ERROR,
+                "current_problem": None,
+                "last_error": (
+                    f"No {language.value.title()} exercise could be authored. The tutor "
+                    "could not reach a model, and it will not substitute a Python task "
+                    "under another language's name. Nothing has been counted against you."
+                ),
+            }
+
         return {
             "current_problem": problem.model_dump(mode="json"),
             "current_problem_id": problem.problem_id,

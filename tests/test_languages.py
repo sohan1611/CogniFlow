@@ -132,3 +132,53 @@ def test_missing_compiler_at_run_time_is_sandbox_failure(monkeypatch) -> None:
     assert result.status == ExecutionStatus.SANDBOX_ERROR
     assert result.started is False
     assert classify(result) == SystemFault.SANDBOX_FAILURE
+
+
+def test_an_unmarkable_problem_halts_instead_of_being_served(monkeypatch) -> None:
+    """A student must never be penalised for a problem that was never set.
+
+    When a non-Python language is active and every provider in the chain has failed,
+    there is no authored offline ladder to fall back to -- and the degraded placeholder
+    carries no expected output and no test cases. Serving it would put a Submit button
+    under a non-problem, and `run_test_cases` returns all_passed=False whenever there
+    are zero cases (runner.py: `total_count > 0 and ...`). That False is a
+    StudentOutcome, so it lowers mastery and can trigger a prerequisite redirect.
+
+    Halting costs the student nothing and says why.
+    """
+    from app.graph.nodes import _is_usable, _template_problem
+    from app.models.enums import Difficulty, SessionStatus
+
+    state = {
+        "target_skill": "loops",
+        "difficulty_level": Difficulty.EASY,
+        "language": "JAVASCRIPT",
+    }
+    placeholder = _template_problem(state, 0)
+
+    assert not _is_usable(placeholder), (
+        "the JavaScript offline placeholder must be recognised as unmarkable -- if this "
+        "ever returns True the halt below is dead code and the trap is back"
+    )
+    assert not placeholder.expected_output.strip()
+    assert not placeholder.test_cases
+
+    # And it must not quietly become a Python task wearing a JavaScript label.
+    python_task = _template_problem({**state, "language": "PYTHON"}, 0)
+    assert placeholder.prompt != python_task.prompt
+    assert SessionStatus.HALTED_ERROR.value == "HALTED_ERROR"
+
+
+def test_zero_test_cases_never_reads_as_a_pass(monkeypatch) -> None:
+    """The mechanism behind the trap, pinned directly.
+
+    This is why an unmarkable problem is dangerous rather than merely useless: an empty
+    suite is not "nothing to check", it is a FAILURE, and a failure moves mastery.
+    """
+    from app.tools.sandbox.runner import run_test_cases
+    from app.tools.sandbox.subprocess_sandbox import SubprocessSandbox
+
+    suite = run_test_cases(SubprocessSandbox(), "print('anything')", [])
+    assert not suite.all_passed, (
+        "an empty test suite reporting a pass would be the opposite bug, and equally bad"
+    )
