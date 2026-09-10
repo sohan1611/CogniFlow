@@ -16,6 +16,7 @@ import type { Health } from "@/lib/api";
 
 /** Kept in step with the .glass-sweep animation in globals.css. */
 const SWEEP_MS = 620;
+const VERSION_LABEL = "v1.0";
 
 /** "detail" is deliberately NOT in TABS. It is the tutor's own working notes -- the
  *  decision trail and its diagnoses -- which are written ABOUT a student rather than to
@@ -163,13 +164,16 @@ export function Shell({
               CF
             </div>
             <div className="brand-copy">
-              <div className="wordmark">
-                Cogni<span className="wordmark-flow">Flow</span>
+              <div className="brand-line">
+                <div className="wordmark">
+                  Cogni<span className="wordmark-flow">Flow</span>
+                </div>
+                <span className="version-chip">{VERSION_LABEL}</span>
                 {hasTemplateNotice && (
                   <button
                     ref={dotTriggerRef}
                     type="button"
-                    className="engine-dot"
+                    className="engine-dot engine-dot-inline"
                     aria-label="Built-in templates status"
                     aria-expanded={moreOpen}
                     aria-haspopup="dialog"
@@ -192,7 +196,6 @@ export function Shell({
                 disabled={!name}
                 title={!name ? "Tell me your name first" : undefined}
               >
-                <span aria-hidden>{t.icon}</span>
                 {t.label}
               </button>
             ))}

@@ -21,13 +21,77 @@ import {
   type Progress,
   type TutorEvent,
   type TutorView,
+  type PlanSkill,
 } from "@/lib/api";
 import { StudentDashboard } from "./dashboard";
 import { CodeEditor } from "./editor";
-import { ActivityPanel, LearningPlan, pretty } from "./plan";
+import { ActivityPanel, LearningPlan, pretty, skillBlurb } from "./plan";
 import { Shell, type Tab, useGlassSwap } from "./shell";
 
 type Stage = "name" | "diagnostic" | "app";
+
+function startOfLocalDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function buildLocalDayBuckets(activity: Activity) {
+  const byDay = new Map<string, number>();
+  for (const attempt of activity.attempts) {
+    const at = new Date(attempt.at);
+    byDay.set(at.toDateString(), (byDay.get(at.toDateString()) ?? 0) + 1);
+  }
+  return byDay;
+}
+
+function currentActivityStreak(activity: Activity | null) {
+  if (!activity) return null;
+  const byDay = buildLocalDayBuckets(activity);
+  let streak = 0;
+  let cursor = startOfLocalDay(new Date());
+  while ((byDay.get(cursor.toDateString()) ?? 0) > 0) {
+    streak += 1;
+    cursor = addDays(cursor, -1);
+  }
+  return streak;
+}
+
+function dayPart(date: Date) {
+  const hour = date.getHours();
+  if (hour < 12) return "morning";
+  if (hour < 18) return "afternoon";
+  return "evening";
+}
+
+function useDayPart() {
+  const [part, setPart] = useState(() => dayPart(new Date()));
+  useEffect(() => {
+    const refresh = () => setPart(dayPart(new Date()));
+    refresh();
+    const timer = window.setInterval(refresh, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return part;
+}
+
+function planAttemptTotal(plan: Plan) {
+  return plan.skills.reduce((total, skill) => total + skill.attempts, 0);
+}
+
+function visibleAttemptTotal(plan: Plan, progress: Progress | null, activity: Activity | null) {
+  return progress?.total_attempts ?? activity?.total ?? planAttemptTotal(plan);
+}
+
+function dashboardFocus(plan: Plan, activeSkill: string | null) {
+  const focusId = activeSkill ?? plan.suggested_next;
+  if (!focusId) return null;
+  return plan.skills.find((skill) => skill.skill === focusId) ?? null;
+}
 
 export default function Page() {
   const [stage, setStage] = useState<Stage>("name");
@@ -437,10 +501,17 @@ export default function Page() {
       )}
 
       {stage === "app" && tab === "plan" && plan && (
-        <LearningPlan
+        <PlanDashboard
           plan={plan}
           activeSkill={view?.awaiting_student ? view.target_skill : null}
+          view={view}
+          progress={progress}
+          activity={activity}
+          name={name}
           onStart={startSkill}
+          onHint={askForHint}
+          hints={hints.slice(0, shown)}
+          exhausted={shown > 0 && shown >= hints.length}
           busy={busy}
         />
       )}
@@ -467,6 +538,336 @@ export default function Page() {
         <ProgressView progress={progress} activity={activity} />
       )}
     </Shell>
+  );
+}
+
+function PlanDashboard({
+  plan,
+  activeSkill,
+  view,
+  progress,
+  activity,
+  name,
+  onStart,
+  onHint,
+  hints,
+  exhausted,
+  busy,
+}: {
+  plan: Plan;
+  activeSkill: string | null;
+  view: TutorView | null;
+  progress: Progress | null;
+  activity: Activity | null;
+  name: string;
+  onStart: (skill: string) => void;
+  onHint: () => void;
+  hints: string[];
+  exhausted: boolean;
+  busy: boolean;
+}) {
+  const focus = dashboardFocus(plan, activeSkill);
+  const rail = (
+    <DashboardRail
+      view={view}
+      progress={progress}
+      hints={hints}
+      exhausted={exhausted}
+      busy={busy}
+      onHint={onHint}
+    />
+  );
+
+  return (
+    <div className="academic-layout">
+      <section className="academic-main" aria-labelledby="dashboard-title">
+        <GreetingBlock
+          plan={plan}
+          progress={progress}
+          activity={activity}
+          focus={focus}
+          name={name}
+          onStart={onStart}
+          busy={busy}
+        />
+        <StatRow plan={plan} progress={progress} activity={activity} view={view} focus={focus} />
+        {focus && (
+          <FocusCard
+            skill={focus}
+            active={focus.skill === activeSkill}
+            view={view}
+            onStart={() => onStart(focus.skill)}
+            busy={busy}
+          />
+        )}
+        <div className="roadmap-title-row">
+          <div>
+            <h2 id="roadmap-title">Curriculum roadmap</h2>
+            <p className="sub">Ordered by the engine&apos;s current Python fundamentals plan.</p>
+          </div>
+        </div>
+        <LearningPlan
+          plan={plan}
+          activeSkill={activeSkill}
+          onStart={onStart}
+          busy={busy}
+        />
+      </section>
+      {rail}
+    </div>
+  );
+}
+
+function GreetingBlock({
+  plan,
+  progress,
+  activity,
+  focus,
+  name,
+  onStart,
+  busy,
+}: {
+  plan: Plan;
+  progress: Progress | null;
+  activity: Activity | null;
+  focus: PlanSkill | null;
+  name: string;
+  onStart: (skill: string) => void;
+  busy: boolean;
+}) {
+  const part = useDayPart();
+  const attempts = visibleAttemptTotal(plan, progress, activity);
+  const streak = currentActivityStreak(activity);
+  const summary =
+    attempts === 0
+      ? "Nothing recorded yet — your first exercise will start the streak."
+      : streak == null
+        ? `${attempts} attempt${attempts === 1 ? "" : "s"} · ${plan.counts.done} of ${plan.counts.total} confirmed`
+        : `${streak}-day streak · ${attempts} attempt${attempts === 1 ? "" : "s"} · ${plan.counts.done} of ${plan.counts.total} confirmed`;
+
+  return (
+    <div className="greeting-block">
+      <div className="greeting-copy">
+        <p className="breadcrumb">
+          PYTHON FUNDAMENTALS <span aria-hidden>/</span> {plan.counts.total} skills
+        </p>
+        <h1 id="dashboard-title">Good {part}, {name}</h1>
+        <p className="sub">{summary}</p>
+      </div>
+      {focus && (
+        <button
+          type="button"
+          className="btn continue-btn"
+          onClick={() => onStart(focus.skill)}
+          disabled={busy}
+        >
+          Continue {pretty(focus.skill)}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function StatRow({
+  plan,
+  progress,
+  activity,
+  view,
+  focus,
+}: {
+  plan: Plan;
+  progress: Progress | null;
+  activity: Activity | null;
+  view: TutorView | null;
+  focus: PlanSkill | null;
+}) {
+  const attempts = visibleAttemptTotal(plan, progress, activity);
+  const streak = currentActivityStreak(activity);
+  const nextUp = plan.suggested_next
+    ? plan.skills.find((skill) => skill.skill === plan.suggested_next) ?? null
+    : null;
+  const nextDemand =
+    nextUp && view?.target_skill === nextUp.skill && view.difficulty_change?.demands
+      ? view.difficulty_change.demands
+      : nextUp
+        ? skillBlurb(nextUp.skill)
+        : "All skills are confirmed.";
+
+  return (
+    <div className="dashboard-stat-row">
+      <div className="stat academic-stat done">
+        <span>CONFIRMED</span>
+        <b>{plan.counts.done}/{plan.counts.total}</b>
+        <small>{plan.counts.total - plan.counts.done} still open</small>
+      </div>
+      <div className="stat academic-stat maybe" title="Answered well once — not confirmed yet">
+        <span>LOOKS GOOD</span>
+        <b>{plan.counts.provisional}</b>
+        <small>answered once, not confirmed</small>
+      </div>
+      <div className="stat academic-stat">
+        <span>ATTEMPTS</span>
+        <b>{attempts}</b>
+        <small>
+          {streak == null
+            ? `${attempts} attempt${attempts === 1 ? "" : "s"} recorded`
+            : `${streak}-day streak`}
+        </small>
+      </div>
+      <div className="stat academic-stat">
+        <span>NEXT UP</span>
+        <b>{nextUp ? pretty(nextUp.skill) : focus ? pretty(focus.skill) : "None"}</b>
+        <small>{nextDemand}</small>
+      </div>
+    </div>
+  );
+}
+
+function FocusCard({
+  skill,
+  active,
+  view,
+  onStart,
+  busy,
+}: {
+  skill: PlanSkill;
+  active: boolean;
+  view: TutorView | null;
+  onStart: () => void;
+  busy: boolean;
+}) {
+  const demand =
+    active && view?.target_skill === skill.skill && view.difficulty_change?.demands
+      ? view.difficulty_change.demands
+      : skillBlurb(skill.skill);
+
+  return (
+    <section className={`focus-card${active ? " active" : ""}`} aria-labelledby="focus-title">
+      <div className="focus-copy">
+        <p className="breadcrumb">{active ? "CURRENT FOCUS" : "NEXT UP"}</p>
+        <h2 id="focus-title">{pretty(skill.skill)}</h2>
+        <p className="sub">{demand}</p>
+        {skill.state === "locked" && skill.blocked_by.length > 0 && (
+          <p className="muted">Waiting on {skill.blocked_by.map(pretty).join(", ")}</p>
+        )}
+      </div>
+      <div className="focus-meter">
+        <span className={`chip ${skill.state === "completed" ? "done" : skill.state === "provisional" ? "maybe" : ""}`}>
+          {skill.state}
+        </span>
+        <strong>{(skill.mastery * 100).toFixed(0)}%</strong>
+        <small className="muted">mastery estimate</small>
+        {skill.state !== "locked" && (
+          <button type="button" className="btn continue-btn" onClick={onStart} disabled={busy}>
+            Continue {pretty(skill.skill)}
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function DashboardRail({
+  view,
+  progress,
+  hints,
+  exhausted,
+  busy,
+  onHint,
+}: {
+  view: TutorView | null;
+  progress: Progress | null;
+  hints: string[];
+  exhausted: boolean;
+  busy: boolean;
+  onHint: () => void;
+}) {
+  const hasHintPanel = Boolean(view?.problem && view.awaiting_student);
+  const hasRecentPanel = progress !== null;
+  if (!hasHintPanel && !hasRecentPanel) return null;
+
+  return (
+    <aside className="dashboard-rail" aria-label="Secondary panels">
+      {hasHintPanel && (
+        <NextHintPanel
+          view={view}
+          hints={hints}
+          exhausted={exhausted}
+          busy={busy}
+          onHint={onHint}
+        />
+      )}
+      {progress && <RecentActivityPanel progress={progress} />}
+    </aside>
+  );
+}
+
+function NextHintPanel({
+  view,
+  hints,
+  exhausted,
+  busy,
+  onHint,
+}: {
+  view: TutorView | null;
+  hints: string[];
+  exhausted: boolean;
+  busy: boolean;
+  onHint: () => void;
+}) {
+  if (!view?.problem || !view.awaiting_student) return null;
+
+  return (
+    <section className="panel hint-panel">
+      <div className="head">
+        <h2>Next hint</h2>
+        <button type="button" className="reveal-btn" onClick={onHint} disabled={busy || exhausted}>
+          {exhausted ? "No more hints" : "Reveal"}
+        </button>
+      </div>
+      <p className="muted">{view.problem.title ?? pretty(view.target_skill ?? "current skill")}</p>
+      {hints.map((hint, i) => (
+        <div className="note info" key={i}>
+          <strong>Hint {i + 1}</strong>
+          {hint}
+        </div>
+      ))}
+      {exhausted && (
+        <p className="muted">
+          That&apos;s as much as I can give you without doing it for you — have a go, and I&apos;ll tell you exactly what went wrong.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function RecentActivityPanel({ progress }: { progress: Progress }) {
+  return (
+    <section className="panel recent-panel">
+      <div className="head">
+        <h2>Recent activity</h2>
+      </div>
+      {progress.recent_attempts.length === 0 && (
+        <div className="event plain">
+          <p>
+            Nothing here yet. The quick check is a probe, not an attempt — this fills
+            up once you start answering real exercises, and every line shows what your
+            mastery did and why.
+          </p>
+        </div>
+      )}
+      {progress.recent_attempts.map((a, i) => (
+        <div className={`event ${a.outcome === "CORRECT" ? "leaf" : "butter"}`} key={i}>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <span className="kind">{pretty(a.skill)}</span>
+            <span className="when">
+              {a.mastery_before.toFixed(2)} → {a.mastery_after.toFixed(2)}
+            </span>
+          </div>
+          <p>{a.outcome.replace(/_/g, " ").toLowerCase()}</p>
+        </div>
+      ))}
+    </section>
   );
 }
 

@@ -9,7 +9,8 @@
  * the system underneath.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+
 import type { Plan, PlanSkill, TutorEvent } from "@/lib/api";
 
 const LABELS: Record<string, string> = {
@@ -38,6 +39,7 @@ const BLURBS: Record<string, string> = {
    "Recursion Tree" against the plan's "Recursion Trees" for exactly as long as this
    lived here privately -- one student, one skill, two names. */
 export const pretty = (s: string) => LABELS[s] ?? s.replace(/_/g, " ");
+export const skillBlurb = (s: string) => BLURBS[s] ?? "A skill in this course.";
 
 export function LearningPlan({
   plan,
@@ -50,155 +52,76 @@ export function LearningPlan({
   onStart: (skill: string) => void;
   busy: boolean;
 }) {
+  // Restored after the dashboard rework removed it. The design's search bar reads
+  // "Search curriculum or notes", which we do not have and did not build -- but this
+  // one was already here, already worked, and filters the student's own skills. A
+  // spec line meant to stop a fabricated control was read as licence to delete a real
+  // one.
   const [query, setQuery] = useState("");
-  const gridRef = useRef<HTMLDivElement>(null);
-  const [edges, setEdges] = useState<string[]>([]);
-
-  const shown = plan.skills.filter(
-    (s) =>
-      !query.trim() ||
-      pretty(s.skill).toLowerCase().includes(query.trim().toLowerCase()),
-  );
+  const needle = query.trim().toLowerCase();
+  const shown = needle
+    ? plan.skills.filter((s) => pretty(s.skill).toLowerCase().includes(needle))
+    : plan.skills;
   const unlocked = plan.counts.total - plan.counts.upcoming;
 
-  // Draw the prerequisite edges between the cards actually on screen. Measured from
-  // the DOM rather than hard-coded, so the lines stay correct when the grid reflows.
-  useEffect(() => {
-    const desktop = window.matchMedia("(min-width: 768px)");
-    const draw = () => {
-      if (!desktop.matches) {
-        setEdges([]);
-        return;
-      }
-      const grid = gridRef.current;
-      if (!grid) return;
-      const base = grid.getBoundingClientRect();
-      const box = (skill: string) => {
-        const el = grid.querySelector<HTMLElement>(`[data-skill="${skill}"]`);
-        return el ? el.getBoundingClientRect() : null;
-      };
-      const paths: string[] = [];
-      for (const item of shown) {
-        const to = box(item.skill);
-        if (!to) continue;
-        for (const prereq of item.prerequisites) {
-          const from = box(prereq);
-          if (!from) continue;
-          const y1 = from.top - base.top + from.height / 2;
-          const x2 = to.left - base.left;
-          const y2 = to.top - base.top + to.height / 2;
-
-          if (to.left - base.left > from.right - base.left) {
-            // Target is to the right: a plain elbow through the gap between them
-            // never touches a card.
-            const x1 = from.right - base.left;
-            const mid = x1 + (x2 - x1) / 2;
-            paths.push(`M ${x1} ${y1} H ${mid} V ${y2} H ${x2}`);
-          } else {
-            // Target is to the LEFT or directly below. The old path exited right, ran
-            // back across at (y1+y2)/2, and cut straight through whatever card sat
-            // between the two -- a dashed line through the middle of an unrelated
-            // skill, which is what a prerequisite arrow must never look like.
-            //
-            // Leave by the source's LEFT edge instead and run down the gutter outside
-            // the grid, where there is nothing to cross. The SVG is overflow:visible,
-            // so a negative x is drawable.
-            const x1 = from.left - base.left;
-            const gutter = -14;
-            paths.push(`M ${x1} ${y1} H ${gutter} V ${y2} H ${x2}`);
-          }
-        }
-      }
-      setEdges(paths);
-    };
-    draw();
-    window.addEventListener("resize", draw);
-    desktop.addEventListener("change", draw);
-    return () => {
-      window.removeEventListener("resize", draw);
-      desktop.removeEventListener("change", draw);
-    };
-  }, [shown.length, query, plan.student_id]);
-
   return (
-    <div className="columns">
-      <section>
-        <h1>
-          My Learning Plan <span aria-hidden>🎓</span>
-        </h1>
+    <section className="roadmap-section" aria-labelledby="roadmap-title">
+      <div className="flow-head">
+        <span>
+          <i aria-hidden />
+          CURRICULUM ROADMAP
+        </span>
+        <span>{unlocked} of {plan.counts.total} unlocked</span>
+      </div>
 
-        <div className="toolbar">
-          <div className="search">
-            <span aria-hidden>⌕</span>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search"
-              aria-label="Search skills"
-            />
-          </div>
-          <div className="stat">
-            <b>{plan.counts.total}</b>
-            <span>TOTAL</span>
-          </div>
-          <div className="stat done">
-            <b>{plan.counts.done}</b>
-            <span>DONE</span>
-          </div>
-          <div className="stat maybe" title="Answered well once — not confirmed yet">
-            <b>{plan.counts.provisional}</b>
-            <span>LOOKS GOOD</span>
-          </div>
-          <div className="stat">
-            <b>{plan.counts.upcoming}</b>
-            <span>UPCOMING</span>
-          </div>
-        </div>
+      <div className="roadmap-search">
+        <span aria-hidden>⌕</span>
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Filter skills"
+          aria-label="Filter skills"
+        />
+      </div>
 
-        <div className="flow-head">
-          <span>
-            <i aria-hidden />
-            CURRICULUM FLOW
-          </span>
-          <span>{unlocked} of {plan.counts.total} unlocked</span>
-        </div>
+      {needle && shown.length === 0 && (
+        <p className="muted" style={{ padding: "8px 2px" }}>
+          No skill matches “{query.trim()}”.
+        </p>
+      )}
 
-        <div className="plan" ref={gridRef}>
-          <svg className="edges" aria-hidden>
-            {edges.map((d, i) => (
-              <path key={i} d={d} />
-            ))}
-          </svg>
-          {shown.map((skill, index) => {
-            const active = skill.skill === activeSkill;
-            const suggested = !activeSkill && skill.skill === plan.suggested_next;
-            const nextCompleted = shown[index + 1]?.state === "completed";
-            return (
-              <div
-                className={`spine-item spine-${active ? "active" : skill.state}${
-                  skill.state === "completed" ? " spine-completed" : ""
-                }${skill.state === "completed" && nextCompleted ? " spine-continues" : ""}`}
-                key={skill.skill}
-              >
-                <div className="spine-node" aria-hidden>
-                  {spineGlyph(skill, active)}
-                </div>
-                <SkillCard
-                  skill={skill}
-                  active={active}
-                  // Suppressed while a skill is in flight. Two cards competing for "do this
-                  // next" is worse than none, and the honest next step for someone mid-topic
-                  // is to finish it.
-                  suggested={suggested}
-                  onStart={() => onStart(skill.skill)}
-                  busy={busy}
-                />
+      <div className="plan">
+        {shown.map((skill, index) => {
+          const active = skill.skill === activeSkill;
+          const suggested = !activeSkill && skill.skill === plan.suggested_next;
+          const nextCompleted = shown[index + 1]?.state === "completed";
+          return (
+            <div
+              className={`spine-item spine-${skill.state}${active ? " spine-active" : ""}${
+                skill.state === "completed" ? " spine-completed" : ""
+              }${skill.state === "completed" && nextCompleted ? " spine-continues" : ""}`}
+              key={skill.skill}
+            >
+              <div className="spine-node" aria-hidden>
+                {spineGlyph(skill, active)}
               </div>
-            );
-          })}
-        </div>
-      </section>
-    </div>
+              <SkillCard
+                skill={skill}
+                index={index + 1}
+                active={active}
+                // Suppressed while a skill is in flight. Two cards competing for "do this
+                // next" is worse than none, and the honest next step for someone mid-topic
+                // is to finish it.
+                suggested={suggested}
+                onStart={() => onStart(skill.skill)}
+                busy={busy}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -212,12 +135,14 @@ function spineGlyph(skill: PlanSkill, active: boolean) {
 
 function SkillCard({
   skill,
+  index,
   active,
   suggested,
   onStart,
   busy,
 }: {
   skill: PlanSkill;
+  index: number;
   active: boolean;
   suggested: boolean;
   onStart: () => void;
@@ -233,19 +158,12 @@ function SkillCard({
       : provisional
         ? "chip maybe"
         : "chip";
-  const statusLabel = done
-    ? "Completed"
-    : active
-      ? "In progress"
-      : provisional
-        ? "Looks good ◐"
-        : locked
-          ? "Upcoming"
-          : "Ready";
+  const statusLabel = skill.state;
+  const progressLabel = locked ? skill.state : `${(skill.mastery * 100).toFixed(0)}% complete`;
   const statusTitle = provisional ? "Answered well once — one more to be sure" : undefined;
   return (
     <article
-      className={`card${active ? " active" : ""}${locked ? " locked" : ""}${
+      className={`card roadmap-card${active ? " active" : ""}${locked ? " locked" : ""}${
         suggested ? " suggested" : ""
       }`}
       data-skill={skill.skill}
@@ -259,72 +177,107 @@ function SkillCard({
       {suggested && <p className="flag">Start here</p>}
       {active && <p className="flag active-now">Active now</p>}
 
-      <div className="top">
-        <h3>{pretty(skill.skill)}</h3>
-        <span className={`${statusClass} status-mobile`} title={statusTitle}>
-          {statusLabel}
-        </span>
-        {active ? (
-          <button className="play top-play" onClick={onStart} disabled={busy} aria-label="Continue">
-            ▶
-          </button>
-        ) : (
-          <div className={`dot${locked ? " lock" : ""}`} aria-hidden>
-            {done ? "✓" : provisional ? "◐" : locked ? "🔒" : "＋"}
-          </div>
-        )}
-      </div>
+      <span className="roadmap-index" aria-hidden>
+        {String(index).padStart(2, "0")}
+      </span>
+      <span className={`roadmap-icon roadmap-icon-${skill.state}${active ? " roadmap-icon-active" : ""}`} aria-hidden>
+        {spineGlyph(skill, active)}
+      </span>
 
-      <p className="desc">{BLURBS[skill.skill] ?? "A skill in this course."}</p>
-
-      {/* Locked is not a wall, it is an explanation. Saying which prerequisite is
-          blocking turns "you can't" into "do this first". */}
-      {locked && (
-        <p className="muted" style={{ marginTop: -6, marginBottom: 12 }}>
-          Waiting on {skill.blocked_by.map(pretty).join(", ")}
-        </p>
-      )}
-
-      {provisional && (
-        <p className="muted" style={{ marginTop: -6, marginBottom: 12 }}>
-          You got this right — one more to be sure
-        </p>
-      )}
-
-      <div className="bar" aria-hidden>
-        <span style={{ width: `${Math.max(2, Math.min(1, skill.mastery) * 100)}%` }} />
-      </div>
-
-      <div className="foot" style={{ marginTop: 12 }}>
-        {/* One right answer is evidence, not a finished topic. Saying so is the whole
-           difference between a tutor and a progress bar. */}
-        <span className={`${statusClass} status-desktop`} title={statusTitle}>
-          {statusLabel}
-        </span>
-
-        <div className="row skill-action" style={{ gap: 6 }}>
-          <span className="muted">{(skill.mastery * 100).toFixed(0)}% mastery</span>
-          {active && (
-            <button className="play mobile-play" onClick={onStart} disabled={busy} aria-label="Continue">
+      <div className="roadmap-copy">
+        <div className="top">
+          <h3>
+            {pretty(skill.skill)}
+            {active && <span className="focus-tag"> · CURRENT FOCUS</span>}
+          </h3>
+          <span className={`${statusClass} status-mobile`} title={statusTitle}>
+            {statusLabel}
+          </span>
+          {active ? (
+            <button className="play top-play" onClick={onStart} disabled={busy} aria-label="Continue">
               ▶
             </button>
-          )}
-          {!locked && !active && (
-            <button
-              className={`iconbtn solid${suggested ? " go" : ""}`}
-              onClick={onStart}
-              disabled={busy}
-              aria-label={
-                suggested
-                  ? `Start ${pretty(skill.skill)} — suggested next`
-                  : `Start ${pretty(skill.skill)}`
-              }
-            >
-              ▸
-            </button>
+          ) : (
+            <div className={`dot${locked ? " lock" : ""}`} aria-hidden>
+              {done ? "✓" : provisional ? "◐" : locked ? "🔒" : "＋"}
+            </div>
           )}
         </div>
+
+        <p className="desc">{skillBlurb(skill.skill)}</p>
+
+        {/* Locked is not a wall, it is an explanation. Saying which prerequisite is
+            blocking turns "you can't" into "do this first". */}
+        {locked && (
+          <p className="muted roadmap-wait">
+            Waiting on {skill.blocked_by.map(pretty).join(", ")}
+          </p>
+        )}
+
+        {provisional && (
+          <p className="muted roadmap-wait">
+            You got this right — one more to be sure
+          </p>
+        )}
+
+        <div className="bar" aria-hidden>
+          <span style={{ width: `${Math.max(2, Math.min(1, skill.mastery) * 100)}%` }} />
+        </div>
+
+        <div className="foot" style={{ marginTop: 12 }}>
+          {/* One right answer is evidence, not a finished topic. Saying so is the whole
+             difference between a tutor and a progress bar. */}
+          <span className={`${statusClass} status-desktop`} title={statusTitle}>
+            {statusLabel}
+          </span>
+
+          <div className="row skill-action" style={{ gap: 6 }}>
+            <span className="muted">{(skill.mastery * 100).toFixed(0)}% mastery</span>
+            {active && (
+              <button className="play mobile-play" onClick={onStart} disabled={busy} aria-label="Continue">
+                ▶
+              </button>
+            )}
+            {!locked && !active && (
+              <button
+                className={`iconbtn solid${suggested ? " go" : ""}`}
+                onClick={onStart}
+                disabled={busy}
+                aria-label={
+                  suggested
+                    ? `Start ${pretty(skill.skill)} — suggested next`
+                    : `Start ${pretty(skill.skill)}`
+                }
+              >
+                ▸
+              </button>
+            )}
+          </div>
+        </div>
       </div>
+
+      <div className="roadmap-progress">
+        <span className={statusClass} title={statusTitle}>
+          {statusLabel}
+        </span>
+        <small>{progressLabel}</small>
+      </div>
+
+      {!locked ? (
+        <button
+          className="roadmap-arrow"
+          type="button"
+          onClick={onStart}
+          disabled={busy}
+          aria-label={active ? `Continue ${pretty(skill.skill)}` : `Start ${pretty(skill.skill)}`}
+        >
+          ›
+        </button>
+      ) : (
+        <span className="roadmap-arrow locked-arrow" aria-hidden>
+          ›
+        </span>
+      )}
     </article>
   );
 }
