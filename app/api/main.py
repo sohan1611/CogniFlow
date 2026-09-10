@@ -41,12 +41,19 @@ from app.mastery.misconceptions import hints_for
 from app.mastery.difficulty import rung_for
 from app.mastery.policy import MASTERY_THRESHOLD, is_mastered
 from app.mastery.skill_graph import SkillGraph
-from app.models.enums import Difficulty, StudentOutcome
+from app.models.enums import Difficulty, Language, StudentOutcome
 from app.rag.retriever import Retriever
 from app.services.demo_runner import seed_student
 from app.services.diagnostic import DiagnosticSession
 from app.services.events import EventLog, EventType
 from app.services.student_store import StudentStore, student_id_from_name
+from app.tools.sandbox.docker_sandbox import DockerSandbox
+from app.tools.sandbox.languages import (
+    LanguageSpec,
+    available_languages,
+    is_offerable,
+    spec_for,
+)
 from app.tools.sandbox.runner import run_test_cases
 from app.tools.sandbox.subprocess_sandbox import SubprocessSandbox
 
@@ -156,6 +163,7 @@ app.add_middleware(
 class StartRequest(BaseModel):
     name: str = Field(min_length=1, max_length=60)
     target_skill: str | None = None
+    language: str | None = None
 
 
 class SubmitRequest(BaseModel):
@@ -180,6 +188,7 @@ class Session:
     cfg: dict[str, Any]
     state: dict[str, Any] | None = None
     diagnostic: DiagnosticSession | None = None
+    language: str = Language.PYTHON.value
     _sandbox: SubprocessSandbox = field(default_factory=SubprocessSandbox)
 
 
@@ -191,6 +200,42 @@ def _session(student_id: str) -> Session:
     if session is None:
         raise HTTPException(404, f"no active session for {student_id!r}; POST /session first")
     return session
+
+
+def _language_payload(specs: list[LanguageSpec]) -> list[dict[str, str]]:
+    return [{"value": spec.language.value, "label": spec.label} for spec in specs]
+
+
+def _offerable_language_specs() -> list[LanguageSpec]:
+    return available_languages(docker_available=DockerSandbox.is_available())
+
+
+def _language_or_400(raw: str | None) -> LanguageSpec:
+    requested = (raw or Language.PYTHON.value).strip().upper()
+    try:
+        language = Language(requested)
+    except ValueError as exc:
+        specs = _offerable_language_specs()
+        available = ", ".join(spec.language.value for spec in specs) or "none"
+        raise HTTPException(
+            400,
+            f"unsupported language {raw!r}; available languages: {available}",
+        ) from exc
+
+    if language == Language.PYTHON:
+        spec = spec_for(language)
+        if is_offerable(spec, docker_available=False):
+            return spec
+
+    specs = _offerable_language_specs()
+    available = ", ".join(spec.language.value for spec in specs) or "none"
+    for spec in specs:
+        if spec.language == language:
+            return spec
+    raise HTTPException(
+        400,
+        f"{language.value} is unavailable on this host; available languages: {available}",
+    )
 
 
 def _serialise_events(events: EventLog, limit: int = 40) -> list[dict[str, Any]]:
@@ -304,6 +349,7 @@ def _view(session: Session) -> dict[str, Any]:
             "was_our_fault": bool(grade) and not student_evidence,
         } if grade else None,
         "target_skill": values.get("target_skill"),
+        "language": values.get("language") or session.language,
         "teaching_mode": values.get("teaching_mode"),
         "difficulty": values.get("difficulty_level"),
         "mastery": values.get("mastery_scores", {}),
@@ -324,10 +370,12 @@ def health() -> dict[str, Any]:
     present a templated exercise as though a model wrote it.
     """
     reachable = [s.provider for s in available_chain(Role.GENERATE)]
+    language_specs = _offerable_language_specs()
     return {
         "status": "ok",
         "providers": reachable,
         "generation": "live" if reachable else "deterministic-templates",
+        "languages": _language_payload(language_specs),
         # Reported, not hidden. Retrieval that is still warming up is a real state of
         # this service, and a state the frontend is entitled to see.
         "corpus": INDEX_STATUS,
@@ -354,6 +402,7 @@ def skills() -> dict[str, Any]:
 @app.post("/session")
 def start_session(req: StartRequest) -> dict[str, Any]:
     """Begin or resume a student. New students are diagnosed before being taught."""
+    language_spec = _language_or_400(req.language)
     student_id = student_id_from_name(req.name)
     if not student_id:
         raise HTTPException(422, "name must contain at least one letter or digit")
@@ -376,6 +425,7 @@ def start_session(req: StartRequest) -> dict[str, Any]:
         diagnostic=(
             DiagnosticSession(graph=SkillGraph.from_yaml(SKILLS_CONFIG)) if is_new else None
         ),
+        language=language_spec.language.value,
     )
     SESSIONS[student_id] = session
 
@@ -384,6 +434,7 @@ def start_session(req: StartRequest) -> dict[str, Any]:
         "returning": not is_new,
         "needs_diagnostic": is_new,
         "target_skill": req.target_skill,
+        "language": {"value": language_spec.language.value, "label": language_spec.label},
     }
 
 
@@ -442,6 +493,8 @@ def diagnostic_answer(student_id: str, answer: DiagnosticAnswer) -> dict[str, An
 def begin_tutoring(student_id: str, req: StartRequest) -> dict[str, Any]:
     """Run the graph until it suspends waiting for the student."""
     session = _session(student_id)
+    language_spec = _language_or_400(req.language or session.language)
+    session.language = language_spec.language.value
 
     # The one place grounding is actually about to be used. Waiting here on a cold
     # container is a slower first problem; NOT waiting is an ungrounded one, and an
@@ -450,7 +503,12 @@ def begin_tutoring(student_id: str, req: StartRequest) -> dict[str, Any]:
     INDEX_READY.wait(timeout=180)
 
     session.state = session.graph.invoke(
-        initial_state(student_id, f"api-{student_id}", target_skill=req.target_skill),
+        initial_state(
+            student_id,
+            f"api-{student_id}",
+            target_skill=req.target_skill,
+            language=language_spec.language,
+        ),
         session.cfg,
     )
     return _view(session)

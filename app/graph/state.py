@@ -22,6 +22,7 @@ from app.models.enums import (
     AdaptationAction,
     AssessmentType,
     Difficulty,
+    Language,
     SessionStatus,
     TeachingMode,
 )
@@ -48,6 +49,7 @@ class AgentState(TypedDict, total=False):
     recursion' would be guesswork."""
 
     # -- pedagogy ----------------------------------------------------------
+    language: str
     difficulty_level: str
     teaching_mode: str
     assessment_type: str
@@ -124,6 +126,7 @@ def initial_state(
     *,
     domain: str = "python_fundamentals",
     target_skill: str | None = None,
+    language: str | Language = Language.PYTHON,
 ) -> AgentState:
     """A fully-populated starting state.
 
@@ -135,6 +138,7 @@ def initial_state(
         session_id=session_id,
         messages=[],
         domain=domain,
+        language=str(language),
         current_skill=None,
         target_skill=target_skill,
         prerequisite_skill=None,

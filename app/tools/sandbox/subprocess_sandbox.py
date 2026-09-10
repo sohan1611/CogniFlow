@@ -10,18 +10,19 @@ import math
 import os
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
 
+from app.models.enums import Language
 from app.models.execution import ExecutionResult, ExecutionStatus, SandboxCapability
 from app.tools.sandbox.base import DEFAULT_TIMEOUT_S, MAX_OUTPUT_CHARS
+from app.tools.sandbox.languages import LanguageSpec, runtime_present, spec_for
 
 
 class SubprocessSandbox:
-    """Run student code in a separate Python process."""
+    """Run student code in a separate local process."""
 
     def __init__(
         self,
@@ -29,6 +30,7 @@ class SubprocessSandbox:
         cpu_limit_seconds: int = 5,
         process_limit: int = 64,
         restrict: bool | None = None,
+        language: Language | LanguageSpec | str = Language.PYTHON,
     ) -> None:
         """`restrict` refuses filesystem, network, process and introspection access
         BEFORE running the code.
@@ -46,6 +48,7 @@ class SubprocessSandbox:
                 "0", "false", "False", "no",
             }
         self.restrict = restrict
+        self._language_spec = spec_for(language)
 
     def capability(self) -> SandboxCapability:
         """Report subprocess isolation capabilities for the current platform."""
@@ -81,9 +84,12 @@ class SubprocessSandbox:
         code: str,
         stdin: str = "",
         timeout_s: float = DEFAULT_TIMEOUT_S,
+        language: Language | LanguageSpec | str | None = None,
     ) -> ExecutionResult:
-        """Execute code in a per-run temp directory using the current interpreter."""
-        if self.restrict:
+        """Execute code in a per-run temp directory using the selected runtime."""
+
+        spec = self._language_spec if language is None else spec_for(language)
+        if self.restrict and spec.language == Language.PYTHON:
             from app.tools.sandbox.restrictions import check
 
             restriction = check(code)
@@ -97,16 +103,50 @@ class SubprocessSandbox:
                     error_message=f"{restriction.rule}: {restriction.detail}",
                 )
 
-
         started_at = time.perf_counter()
         temp_dir: str | None = None
         try:
+            if not runtime_present(spec):
+                missing = ", ".join(spec.executables)
+                return _sandbox_error(
+                    started_at,
+                    f"{spec.label} runtime unavailable; missing one of: {missing}",
+                )
+
             temp_dir = tempfile.mkdtemp(prefix="cogniflow-subprocess-")
-            code_path = Path(temp_dir) / "student_code.py"
+            code_path = Path(temp_dir) / spec.source_name
+            output_path = _output_path(temp_dir, spec)
             code_path.write_text(code, encoding="utf-8")
 
+            if spec.compile_cmd is not None:
+                compiled = subprocess.run(
+                    _render_command(spec.compile_cmd, code_path, output_path),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    cwd=temp_dir,
+                    env=_minimal_child_env(temp_dir),
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=timeout_s,
+                    check=False,
+                    preexec_fn=self._posix_preexec_fn(),
+                )
+                if compiled.returncode != 0:
+                    runtime_ms = _runtime_ms(started_at)
+                    stdout, stderr = _truncate_streams(compiled.stdout, compiled.stderr)
+                    return ExecutionResult(
+                        status=ExecutionStatus.SYNTAX_ERROR,
+                        stdout=stdout,
+                        stderr=stderr,
+                        exit_code=compiled.returncode,
+                        runtime_ms=runtime_ms,
+                        timed_out=False,
+                        started=True,
+                    )
+
             completed = subprocess.run(
-                [sys.executable, "-I", "-B", str(code_path)],
+                _render_command(spec.run_cmd, code_path, output_path),
                 input=stdin,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -170,6 +210,17 @@ class SubprocessSandbox:
                 resource.setrlimit(resource.RLIMIT_NPROC, (process_limit, process_limit))
 
         return apply_limits
+
+
+def _output_path(temp_dir: str, spec: LanguageSpec) -> Path:
+    if spec.language == Language.JAVA:
+        return Path(temp_dir)
+    suffix = ".exe" if os.name == "nt" and spec.language in {Language.C, Language.CPP} else ""
+    return Path(temp_dir) / f"student_program{suffix}"
+
+
+def _render_command(command: tuple[str, ...], source: Path, output: Path) -> list[str]:
+    return [part.format(src=str(source), out=str(output)) for part in command]
 
 
 def _minimal_child_env(temp_dir: str) -> dict[str, str]:
@@ -252,8 +303,8 @@ def _looks_like_syntax_error(stderr: str) -> bool:
     return any(marker in stderr for marker in markers)
 
 
-def _sandbox_error(started_at: float, exc: BaseException) -> ExecutionResult:
-    message = str(exc) or exc.__class__.__name__
+def _sandbox_error(started_at: float, exc: BaseException | str) -> ExecutionResult:
+    message = exc if isinstance(exc, str) else str(exc) or exc.__class__.__name__
     return ExecutionResult(
         status=ExecutionStatus.SANDBOX_ERROR,
         stderr=message,

@@ -14,6 +14,16 @@ class Difficulty(StrEnum):
     HARD = "HARD"
 
 
+class Language(StrEnum):
+    """Programming languages CogniFlow can offer when execution is safe."""
+
+    PYTHON = "PYTHON"
+    JAVASCRIPT = "JAVASCRIPT"
+    JAVA = "JAVA"
+    CPP = "CPP"
+    C = "C"
+
+
 class TeachingMode(StrEnum):
     """Deterministic teaching modes available to the policy layer."""
 

@@ -46,6 +46,7 @@ from app.models.enums import (
     AdaptationAction,
     AssessmentType,
     Difficulty,
+    Language,
     SessionStatus,
     StudentOutcome,
     SystemFault,
@@ -62,7 +63,8 @@ from app.models.schemas import (
 from app.services.events import EventType
 from app.mastery.misconceptions import detect, student_note_for
 from app.tools.sandbox.classifier import classify_with_expectation
-from app.tools.sandbox.runner import run_test_cases
+from app.tools.sandbox.languages import spec_for
+from app.tools.sandbox.runner import run_submission, run_test_cases
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +87,26 @@ def _difficulty_for(mastery: float) -> Difficulty:
     if mastery < 0.75:
         return Difficulty.MEDIUM
     return Difficulty.HARD
+
+
+def _language_from_state(state: AgentState) -> Language:
+    return Language(str(state.get("language") or Language.PYTHON.value))
+
+
+def _language_instruction(language: Language) -> str:
+    spec = spec_for(language)
+    instruction = (
+        f"Language: {spec.label} ({spec.language.value}). The exercise, examples, "
+        f"starter_code, and code-to-trace must be written for {spec.label}, not for "
+        f"Python unless the chosen language is Python. The source file is "
+        f"{spec.source_name}."
+    )
+    if language == Language.JAVA:
+        return (
+            instruction
+            + " Java submissions must define a Main class with a public static void main method."
+        )
+    return instruction
 
 
 # ---------------------------------------------------------------- nodes
@@ -269,6 +291,37 @@ def make_retrieve(deps: GraphDeps) -> Node:
     return retrieve
 
 
+def _offline_language_problem(
+    state: AgentState,
+    language: Language,
+    attempt: int,
+) -> GeneratedProblem:
+    """Honest fallback when the deterministic ladder cannot author this language."""
+
+    spec = spec_for(language)
+    skill = state["target_skill"] or "programming"
+    difficulty = state.get("difficulty_level", Difficulty.MEDIUM)
+    assessment = state.get("assessment_type", AssessmentType.CODING)
+    return GeneratedProblem(
+        title=f"{spec.label} exercise unavailable offline",
+        prompt=(
+            f"The tutor could not author a {spec.label} exercise offline because the "
+            "deterministic fallback ladder is written for Python. No Python exercise is "
+            "being substituted for this language."
+        ),
+        skill=skill,
+        difficulty=difficulty,
+        assessment_type=assessment,
+        starter_code=f"{spec.comment_prefix} Offline authoring is unavailable for {spec.label}.",
+        expected_output="",
+        test_cases=[],
+        concepts=[],
+        cognitive_level="degraded_offline_generation",
+        complexity="degraded",
+        generation_seed=f"degraded:{language.value}:{skill}:{difficulty}:{attempt}",
+    )
+
+
 def _template_problem(state: AgentState, attempt: int = 0) -> GeneratedProblem:
     """Deterministic fallback used when no model is reachable.
 
@@ -289,6 +342,10 @@ def _template_problem(state: AgentState, attempt: int = 0) -> GeneratedProblem:
     difficulty = state.get("difficulty_level", Difficulty.MEDIUM)
     mode = state.get("teaching_mode", TeachingMode.TEXTUAL)
     assessment = state.get("assessment_type", AssessmentType.CODING)
+    language = _language_from_state(state)
+    if language != Language.PYTHON:
+        return _offline_language_problem(state, language, attempt)
+
     rung = rung_for(skill, difficulty)
 
     starter = ""
@@ -397,6 +454,8 @@ def make_generate_problem(deps: GraphDeps) -> Node:
     def generate_problem(state: AgentState) -> dict[str, Any]:
         skill = state["target_skill"]
         difficulty = state.get("difficulty_level", Difficulty.MEDIUM)
+        language = _language_from_state(state)
+        language_spec = spec_for(language)
         context = "\n\n---\n\n".join(state.get("retrieved_context", [])[:3])
         recent = state.get("recent_problem_hashes", [])
         seen_keys = state.get("recent_content_keys", [])
@@ -408,7 +467,8 @@ def make_generate_problem(deps: GraphDeps) -> Node:
                 {
                     "role": "system",
                     "content": (
-                        "You author short Python exercises for one student. Ground the "
+                        f"You author short {language_spec.label} exercises for one student. "
+                        "Ground the "
                         "task in the supplied curriculum material. Return only the schema "
                         "fields."
                     ),
@@ -417,6 +477,7 @@ def make_generate_problem(deps: GraphDeps) -> Node:
                     "role": "user",
                     "content": (
                         f"Skill: {skill}\nDifficulty: {difficulty}\n"
+                        f"{_language_instruction(language)}\n"
                         f"Teaching mode: {state.get('teaching_mode')}\n"
                         f"Assessment type: {state.get('assessment_type')}\n\n"
                         # The whole ladder, not just the rung being asked for. "Make this
@@ -437,8 +498,8 @@ def make_generate_problem(deps: GraphDeps) -> Node:
                             else ""
                         )
                         + f"\n\nCurriculum material:\n{context or '(none available)'}\n\n"
-                        "Write one exercise. If it is a coding task, give an "
-                        "expected_output that a correct solution would print."
+                        "Write one exercise for the selected language. If it is a coding "
+                        "task, give an expected_output that a correct solution would print."
                         + _assessment_instruction(
                             state.get("assessment_type", AssessmentType.CODING)
                         )
@@ -457,18 +518,23 @@ def make_generate_problem(deps: GraphDeps) -> Node:
         # worse outcome than a familiar question.
         recent_prompts = state.get("recent_prompts", [])
         attempts = 0
+        forced_template = False
         for attempts in range(3):
             outcome = _ask(recent_prompts[-4:], attempts)
             problem = outcome.value
             assert isinstance(problem, GeneratedProblem)
+            if language != Language.PYTHON and outcome.used_fallback:
+                break
             if _is_usable(problem) and problem.content_key() not in seen_keys:
                 break
         else:
             # Three drafts and none of them usable. A familiar question is survivable;
-            # an ungradeable one is not, so fall through to a ladder task, which always
-            # carries an expected output that has been run and checked.
+            # an ungradeable one is not, so fall through to the deterministic fallback.
+            # For Python that is an authored ladder task; for any other language it is
+            # the explicit degraded state saying offline authoring is unavailable.
             if not _is_usable(problem):
                 problem = _template_problem(state, attempts)
+                forced_template = True
 
         problem.grounding_sources = [
             f"{s['source']}#{s['section']}" for s in state.get("retrieved_sources", [])[:3]
@@ -476,9 +542,11 @@ def make_generate_problem(deps: GraphDeps) -> Node:
         # Metadata from the rung rather than from the model. A model asked to
         # self-report its own difficulty will agree with whatever it was told; the
         # ladder is the authority on what this level demands.
-        problem.concepts = list(rung.concepts)
-        problem.cognitive_level = rung.cognitive_level
-        problem.complexity = rung.complexity
+        degraded = outcome.used_fallback or forced_template
+        if not (language != Language.PYTHON and degraded):
+            problem.concepts = list(rung.concepts)
+            problem.cognitive_level = rung.cognitive_level
+            problem.complexity = rung.complexity
 
         # Server-assigned, unconditionally, because the model will happily supply its
         # own. Observed live: it returned problem_id="loop_sum_easy_001" -- readable,
@@ -487,7 +555,8 @@ def make_generate_problem(deps: GraphDeps) -> Node:
         # content is not an identifier, it is a slug. The requirement is uniqueness,
         # and only the server can promise that.
         problem.problem_id = uuid4().hex[:12]
-        problem.generation_seed = f"live:{skill}:{difficulty}:{attempts}"
+        if not degraded:
+            problem.generation_seed = f"live:{skill}:{difficulty}:{attempts}"
 
         fp = problem.fingerprint()
         key = problem.content_key()
@@ -500,23 +569,24 @@ def make_generate_problem(deps: GraphDeps) -> Node:
                 "title": problem.title,
                 "skill": problem.skill,
                 "difficulty": str(problem.difficulty),
+                "language": language.value,
                 "concepts": ",".join(problem.concepts),
                 "cognitive_level": problem.cognitive_level,
                 "problem_id": problem.problem_id,
-                "degraded": outcome.used_fallback,
+                "degraded": degraded,
                 "provider": outcome.provider_used,
                 # Why it degraded, not just that it did. A key that is present but
                 # rejected and a key that was never set both read as degraded=True,
                 # and on a deployment whose logs we cannot open that is the whole
                 # difference. None when the call succeeded, so it renders only when
                 # it has something to say.
-                "fault": str(outcome.fault) if outcome.used_fallback else None,
-                "tried": ",".join(outcome.providers_tried) if outcome.used_fallback else None,
+                "fault": str(outcome.fault) if degraded else None,
+                "tried": ",".join(outcome.providers_tried) if degraded else None,
                 # Truncated: enough to tell a rejected key from a rate limit from a
                 # network failure, which are three different fixes and are otherwise
                 # one indistinguishable degraded=True. Provider error strings carry
                 # status and reason, never the credential.
-                "why": (outcome.error_message or "")[:90] if outcome.used_fallback else None,
+                "why": (outcome.error_message or "")[:90] if degraded else None,
                 # Reported after the retries, so a true here means we asked again and
                 # still could not get something new -- not merely that the first draft
                 # was familiar.
@@ -591,6 +661,7 @@ def make_execute_and_grade(deps: GraphDeps) -> Node:
     def execute_and_grade(state: AgentState) -> dict[str, Any]:
         problem = state.get("current_problem") or {}
         code = state.get("student_code")
+        language = state.get("language", Language.PYTHON.value)
 
         if not code:
             grade = GradeResult(passed=False, score=0.0, feedback="No submission received.")
@@ -622,7 +693,7 @@ def make_execute_and_grade(deps: GraphDeps) -> Node:
             cases = [{"name": "default", "stdin": "", "expected_output": expected}]
 
         if cases:
-            suite = run_test_cases(deps.sandbox, code, cases)
+            suite = run_test_cases(deps.sandbox, code, cases, language=language)
             first = suite.first_failure
             exec_result = (
                 first.execution if first else suite.results[-1].execution
@@ -633,7 +704,7 @@ def make_execute_and_grade(deps: GraphDeps) -> Node:
             score = suite.passed_count / max(suite.total_count, 1)
             failing = first.name if first else None
         else:
-            exec_result = deps.sandbox.run(code)
+            exec_result = run_submission(deps.sandbox, code, language=language)
             passed = exec_result.status.value == "ok"
             score = 1.0 if passed else 0.0
             failing = None
