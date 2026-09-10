@@ -108,6 +108,34 @@
   --heat-3: #b4a8ff;
   --heat-4: #7c6cf5;
 
+  /* Structural tokens introduced with the dark redesign. They were defined ONLY in the
+     dark blocks, so in light mode every one of them resolved to nothing -- cards lost
+     their radius, chips lost their ink, the play button lost its size. A var() with no
+     definition and no fallback does not warn; it silently unsets the property, which is
+     why this survived a clean build and a passing type-check.
+
+     These are light EQUIVALENTS, not copies: the glows and the cyan stroke belong to the
+     dark treatment and would be wrong on the light plate. */
+  --card-active-hover-shadow: var(--shadow-lift);
+  --card-suggested-hover-shadow: var(--shadow-lift);
+  --card-radius: var(--r-md);
+  --chip-border: transparent;
+  --chip-ink: var(--ink-2);
+  --chip-done-border: transparent;
+  --chip-maybe-border: transparent;
+  --chip-now-border: transparent;
+  --play-size: 44px;
+  --play-shadow: var(--shadow);
+  --brand-tile-size: 34px;
+  --brand-tile-radius: 10px;
+  --brand-tile-shadow: 0 2px 10px rgba(124, 108, 245, .28);
+  --edge-stroke: var(--spine-node-border);
+  --edge-filter: none;
+  --edge-linecap: round;
+  --spine-active-border: var(--brand);
+  --spine-active-shadow: 0 0 0 3px var(--brand-soft);
+  --spine-progress-line: var(--brand);
+
   --r-lg: 26px;
   --r-md: 18px;
   --r-sm: 12px;
@@ -120,210 +148,257 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --shell: #0a0b10;
-    --shell-2: #12131b;
+    --shell: #080b12;
+    --shell-2: #0d1119;
     --plate: transparent;
-    --page: #0a0b10;
+    --page: #05070c;
 
-    --ink: #f7f8ff;
+    --ink: #f8fbff;
     --ink-2: #d9deeb;
-    --ink-3: #bcc5d8;
+    --ink-3: #c5ccd8;
     --line: rgba(255, 255, 255, .08);
-    --focus: #aeb6ff;
+    --focus: #c4b5fd;
 
-    --brand: #7c6cf5;
-    --brand-2: #35a8ff;
-    --brand-soft: rgba(124, 108, 245, .26);
+    --brand: #8b5cf6;
+    --brand-2: #22d3ee;
+    --brand-soft: rgba(139,92,246,.22);
 
-    --mint: rgba(62, 230, 145, .18);
-    --mint-ink: #b9f8d3;
-    --lilac: rgba(148, 132, 255, .18);
-    --lilac-2: rgba(124, 108, 245, .12);
-    --lilac-ink: #dad6ff;
-    --sky: rgba(79, 169, 255, .16);
-    --sky-ink: #c7e4ff;
-    --butter: rgba(255, 201, 87, .18);
-    --butter-ink: #ffe1a3;
-    --leaf: rgba(54, 212, 131, .16);
-    --leaf-ink: #c0f5d6;
-    --danger: rgba(255, 111, 96, .18);
+    --mint: rgba(52,211,153,.14);
+    --mint-ink: #6ee7b7;
+    --lilac: rgba(34,211,238,.14);
+    --lilac-2: rgba(34,211,238,.08);
+    --lilac-ink: #67e8f9;
+    --sky: rgba(34,211,238,.14);
+    --sky-ink: #67e8f9;
+    --butter: rgba(245,165,36,.14);
+    --butter-ink: #fcd34d;
+    --leaf: rgba(52,211,153,.14);
+    --leaf-ink: #6ee7b7;
+    --amber: #f5a524;
+    --danger: rgba(248,113,113,.16);
     --danger-ink: #ffd0cc;
-    --plain: rgba(255, 255, 255, .045);
+    --plain: rgba(255,255,255,.035);
 
     --body-bg:
-      radial-gradient(circle at 50% -12%, rgba(124, 108, 245, .26), rgba(124, 108, 245, 0) 42%),
-      linear-gradient(180deg, #0a0b10 0%, #12131b 100%);
-    --topbar-bg: rgba(10, 11, 16, .86);
-    --topbar-border: rgba(255, 255, 255, .07);
+      radial-gradient(circle at 50% -20%, rgba(34,211,238,.10), transparent 45%),
+      radial-gradient(circle at 80% 8%, rgba(139,92,246,.10), transparent 40%),
+      linear-gradient(180deg, #05070c 0%, #080b12 100%);
+    --topbar-bg: rgba(5,7,12,.88);
+    --topbar-border: rgba(255,255,255,.06);
     --wordmark-ink: #ffffff;
-    --tagline-ink: rgba(255, 255, 255, .62);
-    --mobile-nav-bg: rgba(10, 11, 16, .9);
-    --mobile-nav-border: rgba(255, 255, 255, .09);
-    --mobile-nav-active-bg: rgba(124, 108, 245, .1);
-    --who-bg: rgba(255, 255, 255, .07);
-    --who-border: rgba(255, 255, 255, .12);
+    --tagline-ink: rgba(255,255,255,.68);
+    --mobile-nav-bg: rgba(5,7,12,.9);
+    --mobile-nav-border: rgba(255,255,255,.06);
+    --mobile-nav-active-bg: rgba(139,92,246,.14);
+    --who-bg: rgba(255,255,255,.055);
+    --who-border: rgba(255,255,255,.075);
 
-    --surface: rgba(255, 255, 255, .045);
-    --surface-soft: rgba(255, 255, 255, .045);
-    --surface-tint: rgba(255, 255, 255, .035);
-    --field-bg: rgba(255, 255, 255, .045);
-    --field-border: rgba(255, 255, 255, .1);
-    --focus-shadow: 0 0 0 2px rgba(174, 182, 255, .22);
-    --card-bg: rgba(255, 255, 255, .035);
-    --card-border: rgba(255, 255, 255, .08);
-    --card-active-bg: linear-gradient(150deg, rgba(124, 108, 245, .18), rgba(53, 168, 255, .08));
-    --card-active-border: rgba(174, 182, 255, .62);
-    --card-active-shadow: 0 0 34px rgba(124, 108, 245, .25), var(--shadow);
-    --spine-line: rgba(255, 255, 255, .13);
-    --spine-node-bg: #0f1118;
-    --spine-node-border: rgba(255, 255, 255, .2);
-    --dot-lock-bg: rgba(255, 255, 255, .055);
-    --chip-bg: rgba(255, 255, 255, .08);
+    --surface: rgba(255,255,255,.035);
+    --surface-soft: rgba(255,255,255,.035);
+    --surface-tint: rgba(255,255,255,.028);
+    --field-bg: rgba(255,255,255,.035);
+    --field-border: rgba(255,255,255,.075);
+    --focus-shadow: 0 0 0 2px rgba(34,211,238,.22);
+    --card-bg: rgba(255,255,255,.028);
+    --card-border: rgba(255,255,255,.075);
+    --card-radius: 20px;
+    --card-active-bg: linear-gradient(150deg, rgba(139,92,246,.22), rgba(34,211,238,.06));
+    --card-active-border: rgba(139,92,246,.55);
+    --card-active-shadow: 0 0 44px rgba(139,92,246,.30), 0 0 0 1px rgba(139,92,246,.20);
+    --card-active-hover-shadow: var(--card-active-shadow);
+    --card-suggested-hover-shadow: 0 0 0 3px var(--brand-soft);
+    --spine-line: rgba(34,211,238,.22);
+    --spine-progress-line: rgba(34,211,238,.45);
+    --spine-node-bg: #0a0d14;
+    --spine-node-border: rgba(34,211,238,.35);
+    --spine-active-border: rgba(139,92,246,.85);
+    --spine-active-shadow: 0 0 22px rgba(139,92,246,.45);
+    --dot-lock-bg: rgba(245,165,36,.14);
+    --chip-bg: rgba(255,255,255,.07);
+    --chip-ink: rgba(255,255,255,.62);
+    --chip-border: transparent;
+    --chip-done-border: transparent;
+    --chip-now-border: transparent;
+    --chip-maybe-border: transparent;
     --button-bg: linear-gradient(140deg, var(--brand), var(--brand-2));
     --button-hover-bg: var(--shell-2);
-    --button-ghost-bg: rgba(255, 255, 255, .055);
-    --button-ghost-hover-bg: rgba(255, 255, 255, .085);
-    --button-ghost-border: rgba(255, 255, 255, .12);
+    --button-ghost-bg: rgba(255,255,255,.055);
+    --button-ghost-hover-bg: rgba(255,255,255,.085);
+    --button-ghost-border: rgba(255,255,255,.075);
     --button-ghost-ink: var(--ink);
-    --icon-bg: rgba(255, 255, 255, .06);
-    --icon-border: rgba(255, 255, 255, .12);
-    --icon-solid-bg: var(--shell-2);
-    --icon-solid-border: rgba(255, 255, 255, .1);
+    --icon-bg: rgba(255,255,255,.045);
+    --icon-border: rgba(255,255,255,.09);
+    --icon-solid-bg: var(--brand);
+    --icon-solid-border: transparent;
     --play-bg: linear-gradient(140deg, var(--brand), var(--brand-2));
-    --panel-bg: rgba(255, 255, 255, .035);
-    --panel-border: rgba(255, 255, 255, .08);
-    --event-plain-bg: rgba(255, 255, 255, .045);
-    --event-plain-border: rgba(255, 255, 255, .08);
-    --badge-bg: rgba(255, 255, 255, .08);
-    --cta-bg: rgba(255, 255, 255, .08);
-    --bar-bg: rgba(255, 255, 255, .09);
+    --play-size: 44px;
+    --play-shadow: 0 0 22px rgba(139,92,246,.55);
+    --panel-bg: rgba(255,255,255,.035);
+    --panel-border: rgba(255,255,255,.075);
+    --event-plain-bg: rgba(255,255,255,.035);
+    --event-plain-border: rgba(255,255,255,.075);
+    --badge-bg: rgba(255,255,255,.07);
+    --cta-bg: rgba(255,255,255,.07);
+    --bar-bg: rgba(255,255,255,.09);
     --bar-fill: linear-gradient(90deg, var(--brand), var(--brand-2));
-    --more-bg: rgba(18, 19, 27, .98);
-    --more-border: rgba(255, 255, 255, .12);
-    --sheet-control-bg: rgba(255, 255, 255, .055);
-    --sheet-control-border: rgba(255, 255, 255, .12);
-    --note-ours-bg: rgba(255, 255, 255, .065);
+    --more-bg: rgba(8,11,18,.98);
+    --more-border: rgba(255,255,255,.075);
+    --sheet-control-bg: rgba(255,255,255,.055);
+    --sheet-control-border: rgba(255,255,255,.075);
+    --note-ours-bg: rgba(255,255,255,.055);
     --note-ours-ink: var(--ink-2);
-    --pre-bg: rgba(255, 255, 255, .045);
-    --pre-border: rgba(255, 255, 255, .08);
-    --editor-bg: rgba(255, 255, 255, .045);
-    --editor-border: rgba(255, 255, 255, .1);
-    --editor-gutter: rgba(255, 255, 255, .04);
-    --editor-active: rgba(124, 108, 245, .14);
-    --editor-selection: rgba(174, 182, 255, .28);
-    --heat-0: rgba(255, 255, 255, .045);
-    --heat-1: rgba(124, 108, 245, .2);
-    --heat-2: rgba(124, 108, 245, .38);
-    --heat-3: rgba(53, 168, 255, .45);
-    --heat-4: #aeb6ff;
+    --pre-bg: rgba(255,255,255,.035);
+    --pre-border: rgba(255,255,255,.075);
+    --editor-bg: rgba(255,255,255,.035);
+    --editor-border: rgba(255,255,255,.075);
+    --editor-gutter: rgba(255,255,255,.03);
+    --editor-active: rgba(139,92,246,.14);
+    --editor-selection: rgba(34,211,238,.24);
+    --heat-0: rgba(255,255,255,.035);
+    --heat-1: rgba(34,211,238,.18);
+    --heat-2: rgba(34,211,238,.34);
+    --heat-3: rgba(139,92,246,.42);
+    --heat-4: #8b5cf6;
+    --brand-tile-size: 34px;
+    --brand-tile-radius: 10px;
+    --brand-tile-shadow: 0 0 18px rgba(139,92,246,.45);
+    --edge-stroke: rgba(34,211,238,.45);
+    --edge-filter: drop-shadow(0 0 4px rgba(34,211,238,.35));
+    --edge-linecap: round;
 
-    --shadow: 0 18px 48px rgba(0, 0, 0, .28);
-    --shadow-lift: 0 2px 4px rgba(16, 24, 40, .06), 0 18px 40px rgba(16, 24, 40, .12);
+    --shadow: none;
+    --shadow-lift: 0 18px 44px rgba(0,0,0,.28);
 
     color-scheme: dark;
   }
 }
 
+/* The explicit choice. Identical to the block above BY CONSTRUCTION -- Codex updated
+   only the media-query copy and left this one on the previous palette, so picking
+   "Dark" in the switcher gave a different theme from having a dark OS. The two are
+   kept in step by tests/test_theme_tokens.py, because nothing else can. */
 :root[data-theme="dark"] {
-  --shell: #0a0b10;
-  --shell-2: #12131b;
+
+  --shell: #080b12;
+  --shell-2: #0d1119;
   --plate: transparent;
-  --page: #0a0b10;
+  --page: #05070c;
 
-  --ink: #f7f8ff;
+  --ink: #f8fbff;
   --ink-2: #d9deeb;
-  --ink-3: #bcc5d8;
+  --ink-3: #c5ccd8;
   --line: rgba(255, 255, 255, .08);
-  --focus: #aeb6ff;
+  --focus: #c4b5fd;
 
-  --brand: #7c6cf5;
-  --brand-2: #35a8ff;
-  --brand-soft: rgba(124, 108, 245, .26);
+  --brand: #8b5cf6;
+  --brand-2: #22d3ee;
+  --brand-soft: rgba(139,92,246,.22);
 
-  --mint: rgba(62, 230, 145, .18);
-  --mint-ink: #b9f8d3;
-  --lilac: rgba(148, 132, 255, .18);
-  --lilac-2: rgba(124, 108, 245, .12);
-  --lilac-ink: #dad6ff;
-  --sky: rgba(79, 169, 255, .16);
-  --sky-ink: #c7e4ff;
-  --butter: rgba(255, 201, 87, .18);
-  --butter-ink: #ffe1a3;
-  --leaf: rgba(54, 212, 131, .16);
-  --leaf-ink: #c0f5d6;
-  --danger: rgba(255, 111, 96, .18);
+  --mint: rgba(52,211,153,.14);
+  --mint-ink: #6ee7b7;
+  --lilac: rgba(34,211,238,.14);
+  --lilac-2: rgba(34,211,238,.08);
+  --lilac-ink: #67e8f9;
+  --sky: rgba(34,211,238,.14);
+  --sky-ink: #67e8f9;
+  --butter: rgba(245,165,36,.14);
+  --butter-ink: #fcd34d;
+  --leaf: rgba(52,211,153,.14);
+  --leaf-ink: #6ee7b7;
+  --amber: #f5a524;
+  --danger: rgba(248,113,113,.16);
   --danger-ink: #ffd0cc;
-  --plain: rgba(255, 255, 255, .045);
+  --plain: rgba(255,255,255,.035);
 
   --body-bg:
-    radial-gradient(circle at 50% -12%, rgba(124, 108, 245, .26), rgba(124, 108, 245, 0) 42%),
-    linear-gradient(180deg, #0a0b10 0%, #12131b 100%);
-  --topbar-bg: rgba(10, 11, 16, .86);
-  --topbar-border: rgba(255, 255, 255, .07);
+    radial-gradient(circle at 50% -20%, rgba(34,211,238,.10), transparent 45%),
+    radial-gradient(circle at 80% 8%, rgba(139,92,246,.10), transparent 40%),
+    linear-gradient(180deg, #05070c 0%, #080b12 100%);
+  --topbar-bg: rgba(5,7,12,.88);
+  --topbar-border: rgba(255,255,255,.06);
   --wordmark-ink: #ffffff;
-  --tagline-ink: rgba(255, 255, 255, .62);
-  --mobile-nav-bg: rgba(10, 11, 16, .9);
-  --mobile-nav-border: rgba(255, 255, 255, .09);
-  --mobile-nav-active-bg: rgba(124, 108, 245, .1);
-  --who-bg: rgba(255, 255, 255, .07);
-  --who-border: rgba(255, 255, 255, .12);
+  --tagline-ink: rgba(255,255,255,.68);
+  --mobile-nav-bg: rgba(5,7,12,.9);
+  --mobile-nav-border: rgba(255,255,255,.06);
+  --mobile-nav-active-bg: rgba(139,92,246,.14);
+  --who-bg: rgba(255,255,255,.055);
+  --who-border: rgba(255,255,255,.075);
 
-  --surface: rgba(255, 255, 255, .045);
-  --surface-soft: rgba(255, 255, 255, .045);
-  --surface-tint: rgba(255, 255, 255, .035);
-  --field-bg: rgba(255, 255, 255, .045);
-  --field-border: rgba(255, 255, 255, .1);
-  --focus-shadow: 0 0 0 2px rgba(174, 182, 255, .22);
-  --card-bg: rgba(255, 255, 255, .035);
-  --card-border: rgba(255, 255, 255, .08);
-  --card-active-bg: linear-gradient(150deg, rgba(124, 108, 245, .18), rgba(53, 168, 255, .08));
-  --card-active-border: rgba(174, 182, 255, .62);
-  --card-active-shadow: 0 0 34px rgba(124, 108, 245, .25), var(--shadow);
-  --spine-line: rgba(255, 255, 255, .13);
-  --spine-node-bg: #0f1118;
-  --spine-node-border: rgba(255, 255, 255, .2);
-  --dot-lock-bg: rgba(255, 255, 255, .055);
-  --chip-bg: rgba(255, 255, 255, .08);
+  --surface: rgba(255,255,255,.035);
+  --surface-soft: rgba(255,255,255,.035);
+  --surface-tint: rgba(255,255,255,.028);
+  --field-bg: rgba(255,255,255,.035);
+  --field-border: rgba(255,255,255,.075);
+  --focus-shadow: 0 0 0 2px rgba(34,211,238,.22);
+  --card-bg: rgba(255,255,255,.028);
+  --card-border: rgba(255,255,255,.075);
+  --card-radius: 20px;
+  --card-active-bg: linear-gradient(150deg, rgba(139,92,246,.22), rgba(34,211,238,.06));
+  --card-active-border: rgba(139,92,246,.55);
+  --card-active-shadow: 0 0 44px rgba(139,92,246,.30), 0 0 0 1px rgba(139,92,246,.20);
+  --card-active-hover-shadow: var(--card-active-shadow);
+  --card-suggested-hover-shadow: 0 0 0 3px var(--brand-soft);
+  --spine-line: rgba(34,211,238,.22);
+  --spine-progress-line: rgba(34,211,238,.45);
+  --spine-node-bg: #0a0d14;
+  --spine-node-border: rgba(34,211,238,.35);
+  --spine-active-border: rgba(139,92,246,.85);
+  --spine-active-shadow: 0 0 22px rgba(139,92,246,.45);
+  --dot-lock-bg: rgba(245,165,36,.14);
+  --chip-bg: rgba(255,255,255,.07);
+  --chip-ink: rgba(255,255,255,.62);
+  --chip-border: transparent;
+  --chip-done-border: transparent;
+  --chip-now-border: transparent;
+  --chip-maybe-border: transparent;
   --button-bg: linear-gradient(140deg, var(--brand), var(--brand-2));
   --button-hover-bg: var(--shell-2);
-  --button-ghost-bg: rgba(255, 255, 255, .055);
-  --button-ghost-hover-bg: rgba(255, 255, 255, .085);
-  --button-ghost-border: rgba(255, 255, 255, .12);
+  --button-ghost-bg: rgba(255,255,255,.055);
+  --button-ghost-hover-bg: rgba(255,255,255,.085);
+  --button-ghost-border: rgba(255,255,255,.075);
   --button-ghost-ink: var(--ink);
-  --icon-bg: rgba(255, 255, 255, .06);
-  --icon-border: rgba(255, 255, 255, .12);
-  --icon-solid-bg: var(--shell-2);
-  --icon-solid-border: rgba(255, 255, 255, .1);
+  --icon-bg: rgba(255,255,255,.045);
+  --icon-border: rgba(255,255,255,.09);
+  --icon-solid-bg: var(--brand);
+  --icon-solid-border: transparent;
   --play-bg: linear-gradient(140deg, var(--brand), var(--brand-2));
-  --panel-bg: rgba(255, 255, 255, .035);
-  --panel-border: rgba(255, 255, 255, .08);
-  --event-plain-bg: rgba(255, 255, 255, .045);
-  --event-plain-border: rgba(255, 255, 255, .08);
-  --badge-bg: rgba(255, 255, 255, .08);
-  --cta-bg: rgba(255, 255, 255, .08);
-  --bar-bg: rgba(255, 255, 255, .09);
+  --play-size: 44px;
+  --play-shadow: 0 0 22px rgba(139,92,246,.55);
+  --panel-bg: rgba(255,255,255,.035);
+  --panel-border: rgba(255,255,255,.075);
+  --event-plain-bg: rgba(255,255,255,.035);
+  --event-plain-border: rgba(255,255,255,.075);
+  --badge-bg: rgba(255,255,255,.07);
+  --cta-bg: rgba(255,255,255,.07);
+  --bar-bg: rgba(255,255,255,.09);
   --bar-fill: linear-gradient(90deg, var(--brand), var(--brand-2));
-  --more-bg: rgba(18, 19, 27, .98);
-  --more-border: rgba(255, 255, 255, .12);
-  --sheet-control-bg: rgba(255, 255, 255, .055);
-  --sheet-control-border: rgba(255, 255, 255, .12);
-  --note-ours-bg: rgba(255, 255, 255, .065);
+  --more-bg: rgba(8,11,18,.98);
+  --more-border: rgba(255,255,255,.075);
+  --sheet-control-bg: rgba(255,255,255,.055);
+  --sheet-control-border: rgba(255,255,255,.075);
+  --note-ours-bg: rgba(255,255,255,.055);
   --note-ours-ink: var(--ink-2);
-  --pre-bg: rgba(255, 255, 255, .045);
-  --pre-border: rgba(255, 255, 255, .08);
-  --editor-bg: rgba(255, 255, 255, .045);
-  --editor-border: rgba(255, 255, 255, .1);
-  --editor-gutter: rgba(255, 255, 255, .04);
-  --editor-active: rgba(124, 108, 245, .14);
-  --editor-selection: rgba(174, 182, 255, .28);
-  --heat-0: rgba(255, 255, 255, .045);
-  --heat-1: rgba(124, 108, 245, .2);
-  --heat-2: rgba(124, 108, 245, .38);
-  --heat-3: rgba(53, 168, 255, .45);
-  --heat-4: #aeb6ff;
+  --pre-bg: rgba(255,255,255,.035);
+  --pre-border: rgba(255,255,255,.075);
+  --editor-bg: rgba(255,255,255,.035);
+  --editor-border: rgba(255,255,255,.075);
+  --editor-gutter: rgba(255,255,255,.03);
+  --editor-active: rgba(139,92,246,.14);
+  --editor-selection: rgba(34,211,238,.24);
+  --heat-0: rgba(255,255,255,.035);
+  --heat-1: rgba(34,211,238,.18);
+  --heat-2: rgba(34,211,238,.34);
+  --heat-3: rgba(139,92,246,.42);
+  --heat-4: #8b5cf6;
+  --brand-tile-size: 34px;
+  --brand-tile-radius: 10px;
+  --brand-tile-shadow: 0 0 18px rgba(139,92,246,.45);
+  --edge-stroke: rgba(34,211,238,.45);
+  --edge-filter: drop-shadow(0 0 4px rgba(34,211,238,.35));
+  --edge-linecap: round;
 
-  --shadow: 0 18px 48px rgba(0, 0, 0, .28);
-  --shadow-lift: 0 2px 4px rgba(16, 24, 40, .06), 0 18px 40px rgba(16, 24, 40, .12);
+  --shadow: none;
+  --shadow-lift: 0 18px 44px rgba(0,0,0,.28);
 
   color-scheme: dark;
 }
@@ -393,16 +468,17 @@ textarea:focus-visible {
 }
 
 .brand-tile {
-  width: 40px;
-  height: 40px;
+  width: var(--brand-tile-size, 40px);
+  height: var(--brand-tile-size, 40px);
   flex: 0 0 auto;
-  border-radius: 12px;
+  border-radius: var(--brand-tile-radius, 12px);
   display: grid;
   place-items: center;
   background: linear-gradient(140deg, var(--brand), var(--brand-2));
   color: #fff;
   font-weight: 900;
   font-size: .78rem;
+  box-shadow: var(--brand-tile-shadow, none);
 }
 
 .brand-copy { min-width: 0; padding-right: 20px; }
@@ -417,7 +493,7 @@ textarea:focus-visible {
   letter-spacing: 0;
   color: var(--wordmark-ink);
 }
-.wordmark span { color: var(--brand); }
+.wordmark-flow { color: var(--brand-2); }
 
 .tagline {
   margin: 5px 0 0;
@@ -779,7 +855,7 @@ p { margin: 0 0 10px; }
 }
 .spine-item:last-child::after { display: none; }
 .spine-completed::before,
-.spine-continues::after { background: var(--brand); }
+.spine-continues::after { background: var(--spine-progress-line, var(--brand)); }
 
 .spine-node {
   position: relative;
@@ -807,10 +883,10 @@ p { margin: 0 0 10px; }
   color: var(--butter-ink);
 }
 .spine-active .spine-node {
-  border-color: rgba(174, 182, 255, .9);
+  border-color: var(--spine-active-border, rgba(174, 182, 255, .9));
   background: linear-gradient(140deg, var(--brand), var(--brand-2));
   color: #fff;
-  box-shadow: 0 0 24px rgba(124, 108, 245, .55);
+  box-shadow: var(--spine-active-shadow, 0 0 24px rgba(124, 108, 245, .55));
 }
 .spine-available .spine-node {
   border-color: rgba(174, 182, 255, .72);
@@ -828,7 +904,7 @@ p { margin: 0 0 10px; }
   min-width: 0;
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: var(--r-md);
+  border-radius: var(--card-radius, var(--r-md));
   padding: 16px;
   box-shadow: var(--shadow);
   transition: transform .2s ease, box-shadow .2s ease, border-color .18s ease, background .18s ease;
@@ -1043,19 +1119,19 @@ p { margin: 0 0 10px; }
   padding: 7px 10px;
   border-radius: 999px;
   background: var(--chip-bg);
-  color: var(--ink-2);
-  border: 1px solid var(--card-border);
+  color: var(--chip-ink, var(--ink-2));
+  border: 1px solid var(--chip-border, var(--card-border));
   white-space: nowrap;
 }
 .chip.done {
   background: var(--mint);
   color: var(--mint-ink);
-  border-color: rgba(185, 248, 211, .2);
+  border-color: var(--chip-done-border, rgba(185, 248, 211, .2));
 }
 .chip.now {
   background: var(--lilac);
   color: var(--lilac-ink);
-  border-color: rgba(218, 214, 255, .22);
+  border-color: var(--chip-now-border, rgba(218, 214, 255, .22));
 }
 /* Provisional: right once, not yet confirmed. Deliberately NOT mint -- a student
    should be able to tell "you finished this" from "you look fine so far" across a
@@ -1063,7 +1139,7 @@ p { margin: 0 0 10px; }
 .chip.maybe {
   background: var(--butter);
   color: var(--butter-ink);
-  border-color: rgba(255, 225, 163, .2);
+  border-color: var(--chip-maybe-border, rgba(255, 225, 163, .2));
 }
 
 .status-desktop,
@@ -1111,6 +1187,7 @@ p { margin: 0 0 10px; }
   display: grid;
   place-items: center;
   font-size: .98rem;
+  box-shadow: var(--play-shadow, none);
   transition: transform .18s ease;
   flex: 0 0 auto;
 }
@@ -1600,7 +1677,7 @@ code {
     letter-spacing: 0;
     color: var(--chrome-ink);
   }
-  .wordmark span { color: var(--focus); }
+  .wordmark-flow { color: var(--brand-2); }
 
   .nav {
     display: flex;
@@ -1834,9 +1911,11 @@ code {
     overflow: visible;
   }
   .edges path {
-    stroke: var(--spine-node-border);
+    stroke: var(--edge-stroke, var(--spine-node-border));
     stroke-width: 1.5;
     stroke-dasharray: 5 5;
+    stroke-linecap: var(--edge-linecap, butt);
+    filter: var(--edge-filter, none);
     fill: none;
   }
 
@@ -1845,7 +1924,7 @@ code {
     z-index: 1;
     background: var(--card-bg);
     border: 1px solid var(--card-border);
-    border-radius: var(--r-md);
+    border-radius: var(--card-radius, var(--r-md));
     padding: 18px 18px 15px;
     box-shadow: var(--shadow);
     transition: transform .2s ease, box-shadow .2s ease;
@@ -1903,7 +1982,7 @@ code {
     padding: 6px 12px;
     border-radius: 999px;
     background: var(--chip-bg);
-    color: var(--ink-2);
+    color: var(--chip-ink, var(--ink-2));
     border: 0;
   }
   .chip.done {
@@ -1954,8 +2033,8 @@ code {
   }
 
   .play {
-    width: 54px;
-    height: 54px;
+    width: var(--play-size, 54px);
+    height: var(--play-size, 54px);
     border-radius: 999px;
     border: 0;
     background: var(--play-bg);
@@ -1964,7 +2043,7 @@ code {
     display: grid;
     place-items: center;
     font-size: 1.05rem;
-    box-shadow: 0 6px 20px rgba(90, 60, 180, .22);
+    box-shadow: var(--play-shadow, 0 6px 20px rgba(90, 60, 180, .22));
     transition: transform .18s ease;
   }
 
@@ -2153,6 +2232,24 @@ code {
   .more-section { border-top-color: var(--more-border); }
 }
 
+@media (prefers-color-scheme: dark) and (min-width: 768px) {
+  :root:not([data-theme="light"]) .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  :root:not([data-theme="light"]) .brand-tile { display: grid; }
+}
+
+@media (min-width: 768px) {
+  :root[data-theme="dark"] .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  :root[data-theme="dark"] .brand-tile { display: grid; }
+}
+
 @media (min-width: 1081px) {
   .columns { grid-template-columns: minmax(0, 1fr) 372px; }
 }
@@ -2162,6 +2259,12 @@ code {
   .card:hover {
     transform: translateY(-2px);
     box-shadow: var(--shadow-lift);
+  }
+  .card.active:hover {
+    box-shadow: var(--card-active-hover-shadow, var(--shadow-lift));
+  }
+  .card.suggested:hover {
+    box-shadow: var(--card-suggested-hover-shadow, var(--shadow-lift));
   }
   .iconbtn:hover { color: var(--ink); }
   .play:hover { transform: scale(1.06); }

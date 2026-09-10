@@ -164,7 +164,7 @@ export function Shell({
             </div>
             <div className="brand-copy">
               <div className="wordmark">
-                Cogni<span>Flow</span>
+                Cogni<span className="wordmark-flow">Flow</span>
                 {hasTemplateNotice && (
                   <button
                     ref={dotTriggerRef}
