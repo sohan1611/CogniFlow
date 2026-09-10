@@ -678,6 +678,40 @@ p { margin: 0 0 10px; }
   color: var(--ink);
   font-size: 16px;
 }
+.language-picker {
+  display: grid;
+  gap: 8px;
+}
+.language-label {
+  margin: 0;
+  font-weight: 700;
+}
+.language-toggle {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--sheet-control-border);
+  border-radius: var(--r-sm);
+  background: var(--surface-soft);
+}
+.language-toggle button {
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.language-toggle button[aria-checked="true"] {
+  background: var(--button-bg);
+  color: var(--button-ink);
+}
 .hero-cta {
   width: 100%;
   min-height: 48px;
@@ -1077,6 +1111,13 @@ p { margin: 0 0 10px; }
   gap: 12px;
 }
 .card .top h3 { min-width: 0; }
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
 .card .desc {
   color: var(--ink-2);
   font-size: .88rem;

@@ -37,10 +37,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 // ---------------------------------------------------------------- shapes
+export type LanguageOption = {
+  value: string;
+  label: string;
+};
+
 export type Health = {
   status: string;
   providers: string[];
   generation: "live" | "deterministic-templates";
+  languages?: LanguageOption[];
 };
 
 export type SessionStart = {
@@ -97,6 +103,7 @@ export type TutorView = {
     was_our_fault: boolean;
   } | null;
   target_skill: string | null;
+  language?: string | null;
   teaching_mode: string | null;
   difficulty: string | null;
   mastery: Record<string, number>;
@@ -191,10 +198,10 @@ export type Activity = {
 export const api = {
   health: () => request<Health>("/health"),
 
-  startSession: (name: string) =>
+  startSession: (name: string, language?: string) =>
     request<SessionStart>("/session", {
       method: "POST",
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(language ? { name, language } : { name }),
     }),
 
   diagnosticQuestion: (id: string) =>

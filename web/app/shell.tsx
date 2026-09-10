@@ -298,6 +298,12 @@ function MoreSheet({
     : providersPresent
       ? "Live model generation"
       : "Built-in templates. Every tutoring decision is still computed exactly as it would be live; only the exercise wording is templated.";
+  const languageLabels = (health?.languages ?? []).map((option) => option.label);
+  const runsText = !health
+    ? "Checking engine status"
+    : languageLabels.length > 0
+      ? languageLabels.join(", ")
+      : "Not reported";
   const corpus =
     health && typeof (health as HealthWithCorpus).corpus === "string"
       ? String((health as HealthWithCorpus).corpus)
@@ -369,6 +375,7 @@ function MoreSheet({
         <section className="more-section">
           <h3>Engine status</h3>
           <p className="muted">{generationText}</p>
+          <p className="muted">Runs: {runsText}</p>
           {corpus && corpus !== "ready" && <p className="muted">Corpus: {corpus}</p>}
         </section>
       </div>

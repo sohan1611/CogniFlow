@@ -9,13 +9,14 @@
  * problem; it does not know how a problem is chosen, and it must not learn.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
   ApiError,
   api,
   type Activity,
   type DiagnosticStep,
   type Health,
+  type LanguageOption,
   type Plan,
   type Progress,
   type TutorEvent,
@@ -32,6 +33,7 @@ export default function Page() {
   const [stage, setStage] = useState<Stage>("name");
   const [tab, setTab] = useState<Tab>("plan");
   const [name, setName] = useState("");
+  const [language, setLanguage] = useState("");
   const [id, setId] = useState("");
   const [health, setHealth] = useState<Health | null>(null);
   const [reachable, setReachable] = useState<boolean | null>(null);
@@ -49,6 +51,15 @@ export default function Page() {
   const [shown, setShown] = useState(0);
 
   const { swap, sweeping } = useGlassSwap();
+  const languageOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const languageOptions = health?.languages ?? [];
+  const hasLanguagePicker = languageOptions.length > 1;
+  const selectedLanguage =
+    hasLanguagePicker && languageOptions.some((option) => option.value === language)
+      ? language
+      : hasLanguagePicker
+        ? languageOptions[0]?.value ?? ""
+        : "";
 
   useEffect(() => {
     // Checked once, up front. A student clicking Start and getting a raw fetch error is
@@ -90,6 +101,18 @@ export default function Page() {
     };
   }, []);
 
+  useEffect(() => {
+    const options = health?.languages ?? [];
+    languageOptionRefs.current = languageOptionRefs.current.slice(0, options.length);
+    if (options.length <= 1) {
+      if (language) setLanguage("");
+      return;
+    }
+    if (!options.some((option) => option.value === language)) {
+      setLanguage(options[0]?.value ?? "");
+    }
+  }, [health, language]);
+
   const guard = useCallback(async (work: () => Promise<void>) => {
     setBusy(true);
     setError(null);
@@ -102,10 +125,33 @@ export default function Page() {
     }
   }, []);
 
+  const moveLanguageSelection = (nextIndex: number) => {
+    const option = languageOptions[nextIndex];
+    if (!option) return;
+    setLanguage(option.value);
+    window.requestAnimationFrame(() => languageOptionRefs.current[nextIndex]?.focus());
+  };
+
+  const onLanguageKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      nextIndex = (index + 1) % languageOptions.length;
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      nextIndex = (index - 1 + languageOptions.length) % languageOptions.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = languageOptions.length - 1;
+    }
+    if (nextIndex == null) return;
+    event.preventDefault();
+    moveLanguageSelection(nextIndex);
+  };
+
   // -------------------------------------------------------------- actions
   const begin = () =>
     guard(async () => {
-      const session = await api.startSession(name);
+      const session = await api.startSession(name, selectedLanguage || undefined);
       setId(session.student_id);
       if (session.needs_diagnostic) {
         const first = await api.diagnosticQuestion(session.student_id);
@@ -186,6 +232,7 @@ export default function Page() {
       setStage("name");
       setTab("plan");
       setName("");
+      setLanguage("");
       setId("");
       setView(null);
       setPlan(null);
@@ -272,6 +319,29 @@ export default function Page() {
                 onKeyDown={(e) => e.key === "Enter" && name.trim() && begin()}
               />
             </div>
+            {hasLanguagePicker && (
+              <div className="language-picker">
+                <p id="language-picker-label" className="language-label">Which language?</p>
+                <div className="language-toggle" role="radiogroup" aria-labelledby="language-picker-label">
+                  {languageOptions.map((option, index) => (
+                    <button
+                      key={option.value}
+                      ref={(node) => {
+                        languageOptionRefs.current[index] = node;
+                      }}
+                      type="button"
+                      role="radio"
+                      aria-checked={selectedLanguage === option.value}
+                      tabIndex={selectedLanguage === option.value ? 0 : -1}
+                      onClick={() => setLanguage(option.value)}
+                      onKeyDown={(event) => onLanguageKeyDown(event, index)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <button
               className="btn hero-cta"
               onClick={begin}
@@ -385,6 +455,7 @@ export default function Page() {
           hints={hints.slice(0, shown)}
           exhausted={shown > 0 && shown >= hints.length}
           busy={busy}
+          languages={languageOptions}
         />
       )}
 
@@ -408,6 +479,7 @@ function Learn({
   hints,
   exhausted,
   busy,
+  languages,
 }: {
   view: TutorView | null;
   code: string;
@@ -417,6 +489,7 @@ function Learn({
   hints: string[];
   exhausted: boolean;
   busy: boolean;
+  languages: LanguageOption[];
 }) {
   if (!view) {
     return (
@@ -427,6 +500,14 @@ function Learn({
     );
   }
   const fb = view.feedback;
+  const runningLanguage = view.language
+    ? languages.find((option) => option.value === view.language) ?? null
+    : null;
+  const defaultLanguageValue = languages[0]?.value ?? null;
+  const languageChipLabel =
+    runningLanguage && defaultLanguageValue && runningLanguage.value !== defaultLanguageValue
+      ? runningLanguage.label
+      : null;
   return (
     <div className="columns">
       <section>
@@ -485,7 +566,10 @@ function Learn({
           <div className="card">
             <div className="top">
               <h3>{view.problem.title}</h3>
-              <span className="chip">{view.difficulty}</span>
+              <div className="chip-row">
+                <span className="chip">{view.difficulty}</span>
+                {languageChipLabel && <span className="chip">{languageChipLabel}</span>}
+              </div>
             </div>
             <p className="exercise-prompt">{view.problem.prompt}</p>
             {view.problem.expected_output && (
