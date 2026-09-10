@@ -385,10 +385,30 @@ def test_the_plan_points_where_the_diagnostic_pointed(client: TestClient) -> Non
         )
 
     plan = client.get("/student/meera/plan").json()
-    assert plan["suggested_next"] == summary["weakest_skill"], (
-        f"diagnostic said start at {summary['weakest_skill']!r}, "
-        f"plan suggests {plan['suggested_next']!r}"
-    )
+    weakest = summary["weakest_skill"]
+    suggested = plan["suggested_next"]
+
+    # Plain equality was the WRONG invariant, and asserting it is what let a real
+    # disagreement reach the deployed app: the check said "Start here: loops" while the
+    # plan flagged functions. The test passed because its own scenario happened not to
+    # tie.
+    #
+    # The two answer different questions and are ALLOWED to differ -- but only in one
+    # way. The diagnosis may name a locked skill, because "your weakest area is
+    # recursion and functions is in the way" is the entire product. When it does, the
+    # plan must point at what unblocks it, not somewhere unrelated.
+    if suggested != weakest:
+        blocking = plan and next(
+            (s["blocked_by"] for s in plan["skills"] if s["skill"] == weakest), []
+        )
+        assert blocking, (
+            f"diagnostic said {weakest!r} and plan said {suggested!r}, but {weakest!r} "
+            "is not blocked by anything -- so there is no reason for them to disagree"
+        )
+        assert suggested in blocking, (
+            f"plan suggests {suggested!r}, which does not unblock {weakest!r} "
+            f"(blocked by {blocking})"
+        )
 
 
 def test_the_plan_counts_add_up(client: TestClient) -> None:

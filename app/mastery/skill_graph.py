@@ -156,3 +156,35 @@ class SkillGraph:
     def _require_skill(self, skill: str) -> None:
         if skill not in self._nodes:
             raise SkillGraphError(f"unknown skill {skill!r}")
+
+
+def weakest_startable(
+    nodes: dict[str, SkillNode], mastery_threshold: float
+) -> str | None:
+    """Where a student should go next: the weakest thing they can ACTUALLY start.
+
+    The one definition, because there used to be two and they disagreed on the
+    deployed app. The diagnostic ended "Start here: loops" while the learning plan
+    put its START HERE flag on functions -- both were unmastered and tied on mastery,
+    and the two selectors broke the tie differently, one by graph order and one
+    alphabetically. A student was told one thing and shown another, one screen apart.
+
+    Two properties, and both matter:
+
+      - Only startable skills are eligible. Naming a locked one is worse than naming
+        nothing: "start here" pointing at a topic the student cannot open is an
+        instruction they cannot follow.
+      - Ties break alphabetically, deterministically. Any stable rule would do; what
+        matters is that everyone uses the SAME one, which is the whole point of this
+        function existing.
+    """
+    graph = SkillGraph(nodes)
+    startable = [
+        skill
+        for skill, node in nodes.items()
+        if node.mastery < mastery_threshold
+        and not graph.unmastered_prerequisites(skill, mastery_threshold)
+    ]
+    if not startable:
+        return None
+    return min(startable, key=lambda s: (nodes[s].mastery, s))

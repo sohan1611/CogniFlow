@@ -230,7 +230,30 @@ class DiagnosticSession:
         graded = SkillGraph(nodes)
         weak = sorted(
             (s for s, n in nodes.items() if n.mastery < mastery_threshold),
-            key=lambda s: nodes[s].mastery,
+            # Alphabetical tie-break, matching skill_graph.weakest_startable exactly.
+            #
+            # This deliberately still names the weakest skill OVERALL, even one that is
+            # locked -- "your weakest area is recursion, and functions is what stands in
+            # the way" is the whole product, and reducing it to the startable skill
+            # would throw the diagnosis away and keep only the next step.
+            #
+            # What it must not do is disagree with the plan for no reason. Seen on the
+            # deployed app: loops and functions were both unmastered, both startable and
+            # TIED, and the two selectors broke the tie differently -- this one by graph
+            # order, the plan alphabetically -- so the check said "Start here: loops"
+            # while the plan flagged functions, one screen apart. With the same
+            # tie-break they agree whenever the weakest skill is startable, and when it
+            # is not, the difference is the diagnosis rather than a contradiction.
+            # Ties prefer a skill the student can actually START. Same mastery, but
+            # one of them is blocked -- naming the blocked one as the headline is
+            # arbitrary and puts the plan's suggestion at odds with it for no reason.
+            # A STRICTLY weaker locked skill still wins, which is the case that
+            # matters: "your weakest area is recursion, and functions is in the way".
+            key=lambda s: (
+                nodes[s].mastery,
+                bool(graded.unmastered_prerequisites(s, mastery_threshold)),
+                s,
+            ),
         )
         target = weak[0] if weak else None
         missing = (

@@ -146,3 +146,70 @@ def test_dependents_is_the_inverse_of_prerequisites() -> None:
     })
     assert graph.dependents("functions") == ["recursion"]
     assert graph.prerequisites("recursion") == ["functions"]
+
+
+def test_the_next_skill_is_chosen_by_one_rule_even_on_a_tie() -> None:
+    """Found on the deployed app, not by a test.
+
+    The diagnostic ended "Start here: loops" while the learning plan put its START HERE
+    flag on functions. Both skills were unmastered and TIED on mastery, and the two
+    selectors broke the tie differently -- one walked the graph's own order, the other
+    went alphabetically. The student was told one thing and shown another, one screen
+    apart.
+
+    The earlier test for this passed because its scenario happened not to tie. This one
+    constructs the tie deliberately.
+    """
+    from app.mastery.skill_graph import weakest_startable
+    from app.models.schemas import SkillNode
+
+    def node(skill, mastery, prereqs=()):
+        return SkillNode(
+            skill=skill, mastery=mastery, confidence=0.3, attempts=1,
+            prerequisites=list(prereqs), misconceptions=[],
+        )
+
+    # variables is mastered; functions and loops are tied and both startable.
+    nodes = {
+        "variables": node("variables", 0.85),
+        "functions": node("functions", 0.244, ["variables"]),
+        "loops": node("loops", 0.244, ["variables"]),
+    }
+    picked = {weakest_startable(nodes, 0.6) for _ in range(20)}
+    assert len(picked) == 1, f"a tie must resolve deterministically, got {picked}"
+    assert picked == {"functions"}, "alphabetical tie-break"
+
+
+def test_a_locked_skill_is_never_suggested() -> None:
+    """"Start here" pointing at a topic the student cannot open is an instruction they
+    cannot follow -- worse than naming nothing at all."""
+    from app.mastery.skill_graph import weakest_startable
+    from app.models.schemas import SkillNode
+
+    def node(skill, mastery, prereqs=()):
+        return SkillNode(
+            skill=skill, mastery=mastery, confidence=0.3, attempts=1,
+            prerequisites=list(prereqs), misconceptions=[],
+        )
+
+    # recursion is the weakest overall, but it is blocked by functions.
+    nodes = {
+        "functions": node("functions", 0.40),
+        "recursion": node("recursion", 0.10, ["functions"]),
+    }
+    assert weakest_startable(nodes, 0.6) == "functions", (
+        "recursion is weaker but locked; the suggestion must be the one they can start"
+    )
+
+
+def test_nothing_is_suggested_when_everything_is_mastered() -> None:
+    from app.mastery.skill_graph import weakest_startable
+    from app.models.schemas import SkillNode
+
+    nodes = {
+        "variables": SkillNode(
+            skill="variables", mastery=0.9, confidence=0.8, attempts=5,
+            prerequisites=[], misconceptions=[],
+        )
+    }
+    assert weakest_startable(nodes, 0.6) is None

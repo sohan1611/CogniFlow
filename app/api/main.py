@@ -40,7 +40,7 @@ from app.llm.provider import Role, available_chain
 from app.mastery.misconceptions import hints_for
 from app.mastery.difficulty import rung_for
 from app.mastery.policy import MASTERY_THRESHOLD, is_mastered
-from app.mastery.skill_graph import SkillGraph
+from app.mastery.skill_graph import SkillGraph, weakest_startable
 from app.models.enums import Difficulty, Language, StudentOutcome
 from app.rag.retriever import Retriever
 from app.services.demo_runner import seed_student
@@ -601,8 +601,7 @@ def learning_plan(student_id: str) -> dict[str, Any]:
 
     # Where a student should go next: the weakest thing they can actually start. Not the
     # weakest overall, which is usually something locked three prerequisites deep.
-    startable = [item for item in plan if item["state"] in ("available", "provisional")]
-    suggested = min(startable, key=lambda i: i["mastery"])["skill"] if startable else None
+    suggested = weakest_startable(nodes, MASTERY_THRESHOLD)
 
     return {
         "student_id": student_id,
