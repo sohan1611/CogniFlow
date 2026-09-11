@@ -19,3 +19,6 @@ streamlit==1.63.0
 # service that depends on a transitive pin is one upstream release from breaking.
 fastapi==0.141.1
 uvicorn==0.52.4
+# The hosted student store. Only used when DATABASE_URL is set; SQLite otherwise.
+psycopg[binary]==3.2.10
+psycopg-pool==3.3.1

@@ -11,6 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.tools.sandbox.base import Sandbox
@@ -31,6 +32,13 @@ class Settings(BaseSettings):
     )
 
     db_path: Path = Path("data/cogniflow.db")
+    # A PostgreSQL URL for the student store. Unprefixed DATABASE_URL is the name every
+    # host and provider uses; set it and student progress lives there instead of in the
+    # SQLite file at db_path, which a host with an ephemeral disk throws away.
+    database_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("DATABASE_URL", "COGNIFLOW_DATABASE_URL"),
+    )
     checkpoint_path: Path = Path("data/checkpoints")
     chroma_path: Path = Path("data/chroma")
     sandbox: Literal["subprocess", "docker"] = "subprocess"

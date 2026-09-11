@@ -46,7 +46,11 @@ from app.rag.retriever import Retriever
 from app.services.demo_runner import seed_student
 from app.services.diagnostic import DiagnosticSession
 from app.services.events import EventLog, EventType
-from app.services.student_store import StudentStore, student_id_from_name
+from app.services.student_store import (
+    StudentStore,
+    configured_backend,
+    student_id_from_name,
+)
 from app.tools.sandbox.docker_sandbox import DockerSandbox
 from app.tools.sandbox.languages import (
     LanguageSpec,
@@ -379,6 +383,9 @@ def health() -> dict[str, Any]:
         # Reported, not hidden. Retrieval that is still warming up is a real state of
         # this service, and a state the frontend is entitled to see.
         "corpus": INDEX_STATUS,
+        # Where student progress lives. "sqlite" on a host with an ephemeral disk means
+        # progress is lost on the next restart, and that should be visible from outside.
+        "storage": configured_backend(),
     }
 
 
