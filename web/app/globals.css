@@ -5,15 +5,16 @@
   --shell: transparent;
   --shell-2: #e8edf7;
   --plate: #ffffff;
-  --page: #f4f6fb;
+  --page: #f4ede3;
 
   --ink: #12141a;
   --ink-2: #5b6473;
-  --ink-3: #8b95a4;
+  --ink-3: #808997;
   --line: #e6eaf2;
   --focus: #2f5fe0;
 
   --brand: #2f5fe0;
+  --brand-ink: #2f5fe0;
   --brand-2: #4f7ffb;
   --brand-soft: #e8efff;
 
@@ -34,9 +35,10 @@
   --plain: #ffffff;
 
   --body-bg: var(--page);
-  --topbar-bg: rgba(255, 255, 255, .9);
+  --topbar-bg: #f4ede3;
+  --brand-logo-light-display: block;
+  --brand-logo-dark-display: none;
   --topbar-border: #e6eaf2;
-  --wordmark-ink: var(--ink);
   --tagline-ink: var(--ink-2);
   --mobile-nav-bg: rgba(255, 255, 255, .94);
   --mobile-nav-border: #e6eaf2;
@@ -128,9 +130,6 @@
   --chip-now-border: transparent;
   --play-size: 44px;
   --play-shadow: var(--shadow);
-  --brand-tile-size: 34px;
-  --brand-tile-radius: 10px;
-  --brand-tile-shadow: 0 2px 10px rgba(47, 95, 224, .24);
   --edge-stroke: var(--spine-node-border);
   --edge-filter: none;
   --edge-linecap: round;
@@ -150,10 +149,10 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --shell: #080b12;
+    --shell: #1c2a45;
     --shell-2: #0d1119;
     --plate: transparent;
-    --page: #05070c;
+    --page: #1c2a45;
 
     --ink: #f8fbff;
     --ink-2: #d9deeb;
@@ -162,6 +161,7 @@
     --focus: #c4b5fd;
 
     --brand: #8b5cf6;
+    --brand-ink: #b495f9;
     --brand-2: #22d3ee;
     --brand-soft: rgba(139,92,246,.22);
 
@@ -181,13 +181,11 @@
     --danger-ink: #ffd0cc;
     --plain: rgba(255,255,255,.035);
 
-    --body-bg:
-      radial-gradient(circle at 50% -20%, rgba(34,211,238,.10), transparent 45%),
-      radial-gradient(circle at 80% 8%, rgba(139,92,246,.10), transparent 40%),
-      linear-gradient(180deg, #05070c 0%, #080b12 100%);
-    --topbar-bg: rgba(5,7,12,.88);
+    --body-bg: var(--page);
+    --topbar-bg: #1c2a45;
+    --brand-logo-light-display: none;
+    --brand-logo-dark-display: block;
     --topbar-border: rgba(255,255,255,.06);
-    --wordmark-ink: #ffffff;
     --tagline-ink: rgba(255,255,255,.68);
     --mobile-nav-bg: rgba(5,7,12,.9);
     --mobile-nav-border: rgba(255,255,255,.06);
@@ -264,9 +262,6 @@
     --heat-2: rgba(34,211,238,.34);
     --heat-3: rgba(139,92,246,.42);
     --heat-4: #8b5cf6;
-    --brand-tile-size: 34px;
-    --brand-tile-radius: 10px;
-    --brand-tile-shadow: 0 0 18px rgba(139,92,246,.45);
     --edge-stroke: rgba(34,211,238,.45);
     --edge-filter: drop-shadow(0 0 4px rgba(34,211,238,.35));
     --edge-linecap: round;
@@ -284,10 +279,10 @@
    kept in step by tests/test_theme_tokens.py, because nothing else can. */
 :root[data-theme="dark"] {
 
-  --shell: #080b12;
+  --shell: #1c2a45;
   --shell-2: #0d1119;
   --plate: transparent;
-  --page: #05070c;
+  --page: #1c2a45;
 
   --ink: #f8fbff;
   --ink-2: #d9deeb;
@@ -296,6 +291,7 @@
   --focus: #c4b5fd;
 
   --brand: #8b5cf6;
+  --brand-ink: #b495f9;
   --brand-2: #22d3ee;
   --brand-soft: rgba(139,92,246,.22);
 
@@ -315,13 +311,11 @@
   --danger-ink: #ffd0cc;
   --plain: rgba(255,255,255,.035);
 
-  --body-bg:
-    radial-gradient(circle at 50% -20%, rgba(34,211,238,.10), transparent 45%),
-    radial-gradient(circle at 80% 8%, rgba(139,92,246,.10), transparent 40%),
-    linear-gradient(180deg, #05070c 0%, #080b12 100%);
-  --topbar-bg: rgba(5,7,12,.88);
+  --body-bg: var(--page);
+  --topbar-bg: #1c2a45;
+  --brand-logo-light-display: none;
+  --brand-logo-dark-display: block;
   --topbar-border: rgba(255,255,255,.06);
-  --wordmark-ink: #ffffff;
   --tagline-ink: rgba(255,255,255,.68);
   --mobile-nav-bg: rgba(5,7,12,.9);
   --mobile-nav-border: rgba(255,255,255,.06);
@@ -398,9 +392,6 @@
   --heat-2: rgba(34,211,238,.34);
   --heat-3: rgba(139,92,246,.42);
   --heat-4: #8b5cf6;
-  --brand-tile-size: 34px;
-  --brand-tile-radius: 10px;
-  --brand-tile-shadow: 0 0 18px rgba(139,92,246,.45);
   --edge-stroke: rgba(34,211,238,.45);
   --edge-filter: drop-shadow(0 0 4px rgba(34,211,238,.35));
   --edge-linecap: round;
@@ -475,19 +466,14 @@ textarea:focus-visible {
   gap: 10px;
 }
 
-.brand-tile {
-  width: var(--brand-tile-size, 40px);
-  height: var(--brand-tile-size, 40px);
+.cogniflow-logo {
+  height: 36px;
+  width: auto;
   flex: 0 0 auto;
-  border-radius: var(--brand-tile-radius, 12px);
-  display: grid;
-  place-items: center;
-  background: linear-gradient(140deg, var(--brand), var(--brand-2));
-  color: #fff;
-  font-weight: 900;
-  font-size: .78rem;
-  box-shadow: var(--brand-tile-shadow, none);
 }
+
+.cogniflow-logo-light { display: var(--brand-logo-light-display); }
+.cogniflow-logo-dark { display: var(--brand-logo-dark-display); }
 
 .brand-copy { min-width: 0; padding-right: 20px; }
 
@@ -497,18 +483,6 @@ textarea:focus-visible {
   gap: 9px;
   min-width: 0;
 }
-
-.wordmark {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  font-size: 1.28rem;
-  line-height: 1;
-  font-weight: 800;
-  letter-spacing: 0;
-  color: var(--wordmark-ink);
-}
-.wordmark-flow { color: var(--brand-2); }
 
 .version-chip {
   flex: 0 0 auto;
@@ -697,7 +671,7 @@ textarea:focus-visible {
   align-items: center;
   gap: 8px;
   margin: 0 0 8px;
-  color: var(--brand);
+  color: var(--brand-ink);
   font-size: 11px;
   line-height: 1.2;
   letter-spacing: .08em;
@@ -1240,7 +1214,7 @@ p { margin: 0 0 10px; }
   font-weight: 800;
   letter-spacing: .09em;
   text-transform: uppercase;
-  color: var(--brand);
+  color: var(--brand-ink);
 }
 .card .flag.active-now {
   width: fit-content;
@@ -2024,17 +1998,10 @@ code {
     display: block;
     min-width: auto;
   }
+  .cogniflow-logo { height: 44px; }
   .brand-copy { padding-right: 0; }
-  .brand-tile,
   .tagline,
   .engine-dot { display: none; }
-  .wordmark {
-    font-size: 1.32rem;
-    font-weight: 800;
-    letter-spacing: 0;
-    color: var(--chrome-ink);
-  }
-  .wordmark-flow { color: var(--brand-2); }
 
   .nav {
     display: flex;
@@ -2152,7 +2119,7 @@ code {
   .hero-pill {
     background: var(--brand-soft);
     border-color: transparent;
-    color: var(--brand);
+    color: var(--brand-ink);
   }
   .step-strip span {
     border-color: var(--field-border);
@@ -2183,7 +2150,7 @@ code {
   }
   .feature > span {
     background: var(--brand-soft);
-    color: var(--brand);
+    color: var(--brand-ink);
   }
 
   .toolbar {
@@ -2288,7 +2255,7 @@ code {
     font-weight: 700;
     letter-spacing: .09em;
     text-transform: uppercase;
-    color: var(--brand);
+    color: var(--brand-ink);
   }
   .card .flag.active-now { display: none; }
   .card .desc {
@@ -2775,7 +2742,7 @@ code {
   }
   .focus-tag {
     display: inline;
-    color: var(--brand);
+    color: var(--brand-ink);
     font-size: .72rem;
     letter-spacing: .08em;
     font-weight: 900;
@@ -2861,7 +2828,6 @@ code {
     align-items: center;
     gap: 10px;
   }
-  :root:not([data-theme="light"]) .brand-tile { display: grid; }
 }
 
 @media (min-width: 768px) {
@@ -2897,7 +2863,6 @@ code {
     align-items: center;
     gap: 10px;
   }
-  :root[data-theme="dark"] .brand-tile { display: grid; }
 }
 
 @media (min-width: 1080px) {
@@ -2967,10 +2932,6 @@ code {
 .auth-wordmark {
   display: flex;
   justify-content: center;
-}
-
-.auth-wordmark .wordmark {
-  font-size: 1.48rem;
 }
 
 .auth-card {
@@ -3046,7 +3007,7 @@ code {
   border: 0;
   border-radius: 10px;
   background: transparent;
-  color: var(--brand);
+  color: var(--brand-ink);
   font: inherit;
   font-weight: 800;
   cursor: pointer;
@@ -3065,7 +3026,7 @@ code {
   min-height: 44px;
   display: inline-flex;
   align-items: center;
-  color: var(--brand);
+  color: var(--brand-ink);
   font-weight: 700;
 }
 

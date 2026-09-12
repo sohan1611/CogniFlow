@@ -107,10 +107,21 @@ export function AuthPage({ children }: { children: ReactNode }) {
   return (
     <div className="auth-page">
       <div className="auth-shell">
-        <div className="auth-wordmark" aria-label="CogniFlow">
-          <span className="wordmark">
-            Cogni<span className="wordmark-flow">Flow</span>
-          </span>
+        <div className="auth-wordmark">
+          <img
+            className="cogniflow-logo cogniflow-logo-light"
+            src="/brand/cogniflow-logo-light.jpg"
+            width={512}
+            height={256}
+            alt="CogniFlow"
+          />
+          <img
+            className="cogniflow-logo cogniflow-logo-dark"
+            src="/brand/cogniflow-logo-dark.jpg"
+            width={512}
+            height={254}
+            alt="CogniFlow"
+          />
         </div>
         <section className="card auth-card">{children}</section>
       </div>

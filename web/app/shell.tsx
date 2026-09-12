@@ -182,14 +182,22 @@ export function Shell({
       <div className="shell">
         <header className="topbar">
           <div className="brand">
-            <div className="brand-tile" aria-hidden>
-              CF
-            </div>
+            <img
+              className="cogniflow-logo cogniflow-logo-light"
+              src="/brand/cogniflow-logo-light.jpg"
+              width={512}
+              height={256}
+              alt="CogniFlow"
+            />
+            <img
+              className="cogniflow-logo cogniflow-logo-dark"
+              src="/brand/cogniflow-logo-dark.jpg"
+              width={512}
+              height={254}
+              alt="CogniFlow"
+            />
             <div className="brand-copy">
               <div className="brand-line">
-                <div className="wordmark">
-                  Cogni<span className="wordmark-flow">Flow</span>
-                </div>
                 <span className="version-chip">{VERSION_LABEL}</span>
                 {hasTemplateNotice && (
                   <button
