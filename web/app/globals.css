@@ -150,7 +150,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --shell: #1c2a45;
-    --shell-2: #0d1119;
+    --shell-2: #2a3750;
     --plate: transparent;
     --page: #1c2a45;
 
@@ -187,7 +187,7 @@
     --brand-logo-dark-display: block;
     --topbar-border: rgba(255,255,255,.06);
     --tagline-ink: rgba(255,255,255,.68);
-    --mobile-nav-bg: rgba(5,7,12,.9);
+    --mobile-nav-bg: rgba(42,55,80,.92);
     --mobile-nav-border: rgba(255,255,255,.06);
     --mobile-nav-ink: var(--ink-3);
     --mobile-nav-current-ink: var(--focus);
@@ -212,7 +212,7 @@
     --card-suggested-hover-shadow: 0 0 0 3px var(--brand-soft);
     --spine-line: rgba(34,211,238,.22);
     --spine-progress-line: rgba(34,211,238,.45);
-    --spine-node-bg: #0a0d14;
+    --spine-node-bg: #25324c;
     --spine-node-border: rgba(34,211,238,.35);
     --spine-active-border: rgba(139,92,246,.85);
     --spine-active-shadow: 0 0 22px rgba(139,92,246,.45);
@@ -244,7 +244,7 @@
     --cta-bg: rgba(255,255,255,.07);
     --bar-bg: rgba(255,255,255,.09);
     --bar-fill: linear-gradient(90deg, var(--brand), var(--brand-2));
-    --more-bg: rgba(8,11,18,.98);
+    --more-bg: #2a3750;
     --more-border: rgba(255,255,255,.075);
     --sheet-control-bg: rgba(255,255,255,.055);
     --sheet-control-border: rgba(255,255,255,.075);
@@ -280,7 +280,7 @@
 :root[data-theme="dark"] {
 
   --shell: #1c2a45;
-  --shell-2: #0d1119;
+  --shell-2: #2a3750;
   --plate: transparent;
   --page: #1c2a45;
 
@@ -317,7 +317,7 @@
   --brand-logo-dark-display: block;
   --topbar-border: rgba(255,255,255,.06);
   --tagline-ink: rgba(255,255,255,.68);
-  --mobile-nav-bg: rgba(5,7,12,.9);
+  --mobile-nav-bg: rgba(42,55,80,.92);
   --mobile-nav-border: rgba(255,255,255,.06);
   --mobile-nav-ink: var(--ink-3);
   --mobile-nav-current-ink: var(--focus);
@@ -342,7 +342,7 @@
   --card-suggested-hover-shadow: 0 0 0 3px var(--brand-soft);
   --spine-line: rgba(34,211,238,.22);
   --spine-progress-line: rgba(34,211,238,.45);
-  --spine-node-bg: #0a0d14;
+  --spine-node-bg: #25324c;
   --spine-node-border: rgba(34,211,238,.35);
   --spine-active-border: rgba(139,92,246,.85);
   --spine-active-shadow: 0 0 22px rgba(139,92,246,.45);
@@ -374,7 +374,7 @@
   --cta-bg: rgba(255,255,255,.07);
   --bar-bg: rgba(255,255,255,.09);
   --bar-fill: linear-gradient(90deg, var(--brand), var(--brand-2));
-  --more-bg: rgba(8,11,18,.98);
+  --more-bg: #2a3750;
   --more-border: rgba(255,255,255,.075);
   --sheet-control-bg: rgba(255,255,255,.055);
   --sheet-control-border: rgba(255,255,255,.075);
@@ -484,17 +484,6 @@ textarea:focus-visible {
   min-width: 0;
 }
 
-.version-chip {
-  flex: 0 0 auto;
-  border: 1px solid var(--card-border);
-  border-radius: 999px;
-  background: var(--surface-soft);
-  color: var(--ink-2);
-  padding: 4px 8px;
-  font-size: 11px;
-  line-height: 1;
-  font-weight: 800;
-}
 
 .tagline {
   margin: 5px 0 0;
@@ -2564,11 +2553,6 @@ code {
   .brand-line {
     gap: 10px;
   }
-  .version-chip {
-    border-color: var(--chrome-border);
-    background: var(--chrome-subtle);
-    color: var(--chrome-muted);
-  }
   .nav {
     background: rgba(255, 255, 255, .7);
     border-color: var(--chrome-border);
@@ -2817,8 +2801,7 @@ code {
     border-color: var(--chrome-border);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16);
   }
-  :root:not([data-theme="light"]) .who,
-  :root:not([data-theme="light"]) .version-chip {
+  :root:not([data-theme="light"]) .who {
     background: var(--chrome-subtle);
     border-color: var(--chrome-border);
     color: var(--chrome-muted);
@@ -2852,8 +2835,7 @@ code {
     border-color: var(--chrome-border);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16);
   }
-  :root[data-theme="dark"] .who,
-  :root[data-theme="dark"] .version-chip {
+  :root[data-theme="dark"] .who {
     background: var(--chrome-subtle);
     border-color: var(--chrome-border);
     color: var(--chrome-muted);

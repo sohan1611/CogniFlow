@@ -18,7 +18,6 @@ import { engineCopy, type EngineStatus } from "@/lib/engine";
 
 /** Kept in step with the .glass-sweep animation in globals.css. */
 const SWEEP_MS = 620;
-const VERSION_LABEL = "v1.0";
 
 /** "detail" is deliberately NOT in TABS. It is the tutor's own working notes -- the
  *  decision trail and its diagnoses -- which are written ABOUT a student rather than to
@@ -197,9 +196,8 @@ export function Shell({
               alt="CogniFlow"
             />
             <div className="brand-copy">
-              <div className="brand-line">
-                <span className="version-chip">{VERSION_LABEL}</span>
-                {hasTemplateNotice && (
+              {hasTemplateNotice && (
+                <div className="brand-line">
                   <button
                     ref={dotTriggerRef}
                     type="button"
@@ -211,8 +209,8 @@ export function Shell({
                   >
                     <span aria-hidden />
                   </button>
-                )}
-              </div>
+                </div>
+              )}
               <p className="tagline">AI-powered adaptive learning</p>
             </div>
           </div>
