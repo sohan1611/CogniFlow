@@ -37,7 +37,7 @@ implies: **no GPU training, no paid data feeds, no paid third-party APIs.**
 |---|---|---|---|
 | Development / debugging | ~500 calls | Groq free tier + disk replay cache | ₹0 |
 | Ablation cohort, 3 arms | policy-only, no model calls at all | none | ₹0 |
-| BKT parameter fitting | fully offline (EM on synthetic trajectories) | none | ₹0 |
+| BKT parameter fitting | fully offline (grid search on synthetic trajectories) | none | ₹0 |
 | Demo runs | ~15 calls each | Groq free tier | ₹0 |
 | | | **Run subtotal** | **₹0** |
 

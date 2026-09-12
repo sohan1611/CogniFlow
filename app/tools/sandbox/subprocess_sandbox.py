@@ -6,6 +6,7 @@ so; failures to create the process are reported as sandbox errors with started=F
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 import shutil
@@ -18,6 +19,8 @@ from pathlib import Path
 from app.models.enums import Language
 from app.models.execution import ExecutionResult, ExecutionStatus, SandboxCapability
 from app.tools.sandbox.base import DEFAULT_TIMEOUT_S, MAX_OUTPUT_CHARS
+
+logger = logging.getLogger(__name__)
 from app.tools.sandbox.languages import LanguageSpec, runtime_present, spec_for
 
 
@@ -305,6 +308,20 @@ def _looks_like_syntax_error(stderr: str) -> bool:
 
 def _sandbox_error(started_at: float, exc: BaseException | str) -> ExecutionResult:
     message = exc if isinstance(exc, str) else str(exc) or exc.__class__.__name__
+
+    # A sandbox fault is OUR failure, and until now it was completely silent: no module
+    # under app/tools/sandbox held a logger, so in production it appeared as a plain
+    # `POST /session/{id}/submit 200 OK` and nothing else. The student was told something
+    # went wrong on our side and we had no way of finding out what.
+    #
+    # WARNING rather than INFO deliberately: the root logger is unconfigured under
+    # uvicorn, so logging.lastResort carries WARNING and above to stderr. An info-level
+    # line would be dropped and we would be back to a silent failure.
+    logger.warning(
+        "[sandbox-fault] execution never started: %s: %s",
+        exc.__class__.__name__ if isinstance(exc, BaseException) else "refused",
+        message,
+    )
     return ExecutionResult(
         status=ExecutionStatus.SANDBOX_ERROR,
         stderr=message,

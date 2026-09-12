@@ -222,7 +222,26 @@ functions   AUC 0.849->0.852 (+0.003)  |  logLik -0.6479->-0.6200 (+0.0279)  -> 
 loops       AUC 0.876->0.880 (+0.003)  |  logLik -0.6264->-0.5966 (+0.0298)  ->  KEEP defaults
 ```
 
-**Fitting did not beat literature defaults meaningfully, so we ship the defaults.**
+**Fitting did not beat the parameters shipped at the time, so we did not adopt fitted
+values.** That result is reported exactly as measured, against the parameters in force
+when it was run.
+
+We have since changed three of the four, and it is important to be precise about why:
+**not because of this study, and not because of any data.** The literature defaults
+describe multiple-choice-shaped assessment. Nothing in CogniFlow is multiple choice — we
+execute the student's program — so the wrong quantity was being estimated. In particular
+`p_guess` is no longer a constant at all: the chance of passing without knowing is a
+property of the test suite that graded the answer, so it is derived from how many
+*distinct* outputs that suite demands. These values are argued from the grading model,
+and we do not claim the fitting study validates them.
+
+The change was forced by a measurement, not a preference. The learning rate was applied
+after **every** observation including failures, which gives the wrong-answer map an
+attracting fixed point at `T(1-G)/(1-G-S)` = 6/35 = **0.171**: no student could be
+recorded below that however badly it went. That is a property of the dynamics rather
+than a clamp, which is why it survived review. `analytic_floor()` states it in closed
+form, is unit-tested to still reproduce 6/35 for the old parameters, and returns 0.096
+for the shipped ones.
 
 The two metrics disagree, and the reason is the finding: fitting clearly improves
 *calibration* (log-likelihood) but barely moves *ranking* (AUC), because AUC is
@@ -461,9 +480,12 @@ Stated plainly, because a system that models students should be honest about its
   `capability()` reports what is actually in force rather than what would sound better.
 - **No personal data is collected.** Student records are local, synthetic, and keyed by
   an arbitrary identifier.
-- **BKT parameters are literature defaults** unless fitted; any fitted values are
-  reported with held-out validation, and if fitting does not beat defaults we ship the
-  defaults and say so.
+- **BKT parameters are argued from the grading model, not fitted.** The fitting study
+  and its negative result are reported exactly as measured, against the parameters in
+  force at the time; we do not claim it validates the values shipped now. `p_guess` is
+  computed per item from how falsifiable the test suite is, which prices our own
+  diagnostic as the weakest instrument in the system -- each of its questions has a
+  single expected output, and four of the eight expect `10`.
 
 ---
 

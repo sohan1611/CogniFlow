@@ -1207,6 +1207,10 @@ function Learn({
             <strong>Something on our side went wrong</strong>
             Your submission and your progress have been preserved, and nothing was
             counted against you.
+            {/* The cause was always in this payload and was being discarded, so a
+                student whose code was refused for importing `os` was told only that
+                something went wrong. If we know what happened, say it. */}
+            {fb.message ? <span className="muted"> {fb.message}</span> : null}
           </div>
         )}
         {fb && !fb.was_our_fault && fb.passed && (

@@ -256,7 +256,13 @@ three attempts and thirty attempts at the same mastery are not equally trustwort
 We also built a parameter-fitting pipeline and it produced an **honest negative result**
 (§9 of the README): fitted parameters improved held-out log-likelihood but not AUC, and
 since the system consumes mastery as a *threshold comparison* — which depends on ranking,
-not calibration — literature defaults are retained.
+not calibration — the fitted values were not adopted.
+
+Three of the four parameters have since changed, for a reason unrelated to that study:
+the literature values describe multiple-choice assessment and this system executes
+programs. See §9 of the README. Confidence is also no longer derived from sample size
+alone — it measures whether the evidence *agrees*, because five correct answers and five
+incorrect ones are not equally trustworthy at the same count.
 
 ---
 
