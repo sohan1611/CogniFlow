@@ -57,11 +57,29 @@ def test_a_new_student_is_told_they_need_diagnosing(client: TestClient) -> None:
     assert body["needs_diagnostic"] is True
 
 
-def test_a_returning_student_is_not_re_diagnosed(client: TestClient) -> None:
+def test_a_returning_student_still_needs_an_unfinished_diagnostic(
+    client: TestClient,
+) -> None:
+    """Returning means the row exists, not that the quick check was completed.
+
+    Leaving and re-entering must keep the diagnostic active; only its persisted finish
+    marker may turn the requirement off.
+    """
     client.post("/session", json={"name": "Aarav"})
     again = client.post("/session", json={"name": "Aarav"}).json()
     assert again["returning"] is True
-    assert again["needs_diagnostic"] is False
+    assert again["needs_diagnostic"] is True
+
+    question = client.get("/session/aarav/diagnostic").json()
+    client.post(
+        "/session/aarav/diagnostic",
+        json={"skill": question["skill"], "code": "print('wrong')"},
+    )
+    assert client.get("/session/aarav/diagnostic").json()["complete"] is True
+
+    diagnosed = client.post("/session", json={"name": "Aarav"}).json()
+    assert diagnosed["returning"] is True
+    assert diagnosed["needs_diagnostic"] is False
 
 
 def test_a_name_with_no_usable_characters_is_rejected(client: TestClient) -> None:
@@ -117,7 +135,7 @@ def test_progress_is_readable_without_an_active_session(client: TestClient) -> N
     client.post("/session", json={"name": "Aarav"})
     body = client.get("/student/aarav/progress").json()
     assert body["student_id"] == "aarav"
-    assert body["skills"], "a seeded student has skills"
+    assert body["skills"], "a student initialized from the curriculum has skills"
     assert "overcome" in body["skills"][0], "resolved misconceptions must be exposed"
     assert body["total_attempts"] == 0
 
@@ -290,9 +308,9 @@ DIAGNOSTIC_ANSWERS = {
 def _sit_the_diagnostic(client: TestClient, student: str = "priya") -> dict:
     """Answer three topics correctly, leave the rest blank, and take the plan.
 
-    Deliberately a FINISHED diagnostic. An unfinished one still reads the seeded demo
-    profile, whose numbers are all comfortably above both thresholds -- so a test that
-    stops early passes whatever the plan does, which is how a vacuous test looks.
+    Deliberately a FINISHED diagnostic. The untouched curriculum priors contain no
+    one-answer evidence, so a test that stops early cannot prove the provisional state
+    is distinguished from completion.
     """
     client.post("/session", json={"name": student.title()})
     for _ in range(12):

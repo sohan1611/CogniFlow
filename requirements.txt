@@ -19,6 +19,8 @@ streamlit==1.63.0
 # service that depends on a transitive pin is one upstream release from breaking.
 fastapi==0.141.1
 uvicorn==0.52.4
+# Ed25519 JWT verification for managed Neon Auth account tokens.
+PyJWT[crypto]==2.13.0
 # The hosted student store. Only used when DATABASE_URL is set; SQLite otherwise.
 psycopg[binary]==3.2.10
 psycopg-pool==3.3.1

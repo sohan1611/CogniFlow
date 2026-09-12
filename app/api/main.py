@@ -13,13 +13,14 @@ phone. Splitting the engine behind HTTP lets a real frontend live somewhere else
 without the engine learning anything about it.
 
 Sessions are held in memory here, deliberately. Durable STUDENT state is already in
-SQLite via StudentStore; what lives in this dict is the in-flight graph handle, which is
-exactly the thing that should not outlive a restart. Swapping the dict for Redis is a
-change to this file alone.
+SQLite locally, or PostgreSQL via StudentStore when DATABASE_URL is set; what lives in
+this dict is the in-flight graph handle, which is exactly the thing that should not
+outlive a restart. Swapping the dict for Redis is a change to this file alone.
 """
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -28,11 +29,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from langgraph.types import Command
 from pydantic import BaseModel, Field
 
+from app.config.settings import get_settings
 from app.graph.builder import build_graph
 from app.graph.deps import GraphDeps
 from app.graph.state import initial_state
@@ -43,7 +46,7 @@ from app.mastery.policy import MASTERY_THRESHOLD, is_mastered
 from app.mastery.skill_graph import SkillGraph, weakest_startable
 from app.models.enums import Difficulty, Language, StudentOutcome
 from app.rag.retriever import Retriever
-from app.services.demo_runner import seed_student
+from app.services.auth import Account, AuthError, TokenVerifier
 from app.services.diagnostic import DiagnosticSession
 from app.services.events import EventLog, EventType
 from app.services.student_store import (
@@ -62,6 +65,7 @@ from app.tools.sandbox.runner import run_test_cases
 from app.tools.sandbox.subprocess_sandbox import SubprocessSandbox
 
 SKILLS_CONFIG = "app/config/skills.yaml"
+logger = logging.getLogger(__name__)
 
 # ----------------------------------------------------------------- startup
 # The repository root, resolved from this file rather than from the working directory.
@@ -149,11 +153,11 @@ app = FastAPI(
 # the per-deploy preview hostnames, which change on every push and so cannot be listed.
 #
 # Worth being straight about what this does and does not buy. CORS is a browser policy,
-# not access control -- this API has no authentication, so anyone with curl can read any
-# student's progress by guessing a display name, and no origin list changes that. What
-# it does stop is an unrelated page a student has open reading their progress from their
-# browser. Real access control arrives with real accounts, and the day it does, this is
-# not the line that provides it.
+# not access control. With NEON_AUTH_BASE_URL set, every student route requires a
+# verified account token and only serves that account's progress. Without it -- local
+# development's name mode -- anyone with curl can read progress by guessing a display
+# name. The origin list limits which browser pages can make requests either way; access
+# control comes from verified accounts, never from this CORS middleware.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
@@ -165,7 +169,7 @@ app.add_middleware(
 
 # ----------------------------------------------------------------- wire format
 class StartRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=60)
+    name: str | None = Field(default=None, max_length=60)
     target_skill: str | None = None
     language: str | None = None
 
@@ -197,6 +201,93 @@ class Session:
 
 
 SESSIONS: dict[str, Session] = {}
+_TOKEN_VERIFIER: TokenVerifier | None = None
+_TOKEN_VERIFIER_BASE_URL: str | None = None
+_TOKEN_VERIFIER_LOCK = threading.Lock()
+
+
+def token_verifier() -> TokenVerifier | None:
+    """The process-wide verifier, or None when name mode is configured."""
+    base_url = get_settings().neon_auth_base_url
+    if not base_url:
+        return None
+
+    global _TOKEN_VERIFIER, _TOKEN_VERIFIER_BASE_URL
+    with _TOKEN_VERIFIER_LOCK:
+        if _TOKEN_VERIFIER is None or _TOKEN_VERIFIER_BASE_URL != base_url:
+            _TOKEN_VERIFIER = TokenVerifier(base_url)
+            _TOKEN_VERIFIER_BASE_URL = base_url
+        return _TOKEN_VERIFIER
+
+
+def _caller(authorization: str | None = Header(default=None)) -> Account | None:
+    verifier = token_verifier()
+    if verifier is None:
+        return None
+
+    parts = authorization.split() if authorization else []
+    if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1]:
+        raise HTTPException(
+            401,
+            "Please sign in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        return verifier.verify(parts[1])
+    except AuthError as exc:
+        # Tokens are credentials. The verifier exposes a token-free reason specifically
+        # so authentication failures can be diagnosed without logging credential data.
+        logger.warning("authentication failed: %s", exc.reason)
+        raise HTTPException(
+            401,
+            "Please sign in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+
+
+def _student_owner(
+    student_id: str,
+    account: Account | None = Depends(_caller),
+) -> Account | None:
+    """Authenticate once and enforce ownership for every student-id path."""
+    if account is not None and account.user_id != student_id:
+        raise HTTPException(403, "That progress belongs to a different account.")
+    return account
+
+
+def _require_name_in_name_mode(req: StartRequest, account: Account | None) -> None:
+    if account is not None:
+        return
+    if req.name is None:
+        if "name" in req.model_fields_set:
+            error = {
+                "type": "string_type",
+                "loc": ("body", "name"),
+                "msg": "Input should be a valid string",
+                "input": None,
+            }
+        else:
+            error = {
+                "type": "missing",
+                "loc": ("body", "name"),
+                "msg": "Field required",
+                "input": req.model_dump(exclude_none=True),
+            }
+    elif req.name == "":
+        error = {
+            "type": "string_too_short",
+            "loc": ("body", "name"),
+            "msg": "String should have at least 1 character",
+            "input": "",
+            "ctx": {"min_length": 1},
+        }
+    else:
+        return
+
+    # StartRequest must accept blank and absent names in account mode. Reconstruct the
+    # former model-level error in name mode so existing clients see the same 422 shape.
+    raise RequestValidationError([error])
 
 
 def _session(student_id: str) -> Session:
@@ -386,6 +477,7 @@ def health() -> dict[str, Any]:
         # Where student progress lives. "sqlite" on a host with an ephemeral disk means
         # progress is lost on the next restart, and that should be visible from outside.
         "storage": configured_backend(),
+        "auth": "required" if token_verifier() is not None else "off",
     }
 
 
@@ -407,30 +499,48 @@ def skills() -> dict[str, Any]:
 
 
 @app.post("/session")
-def start_session(req: StartRequest) -> dict[str, Any]:
-    """Begin or resume a student. New students are diagnosed before being taught."""
+def start_session(
+    req: StartRequest,
+    account: Account | None = Depends(_caller),
+) -> dict[str, Any]:
+    """Begin or resume a student, requiring the quick check until evidence exists."""
+    _require_name_in_name_mode(req, account)
     language_spec = _language_or_400(req.language)
-    student_id = student_id_from_name(req.name)
-    if not student_id:
-        raise HTTPException(422, "name must contain at least one letter or digit")
+    if account is None:
+        # _require_name_in_name_mode has established this for the type checker and for
+        # the exact legacy validation response.
+        assert req.name is not None
+        display_name = req.name.strip()
+        student_id = student_id_from_name(req.name)
+        if not student_id:
+            raise HTTPException(422, "name must contain at least one letter or digit")
+    else:
+        requested_name = (req.name or "").strip()
+        account_name = (account.name or "").strip()
+        email_name = (account.email or "").partition("@")[0].strip()
+        display_name = requested_name or account_name or email_name or "Learner"
+        student_id = account.user_id
 
     store = StudentStore()
     is_new = store.ensure_student(student_id)
     if is_new:
-        seed_student(store, student_id)
+        store.save_skills(student_id, SkillGraph.from_yaml(SKILLS_CONFIG).nodes)
+    needs_diagnostic = store.needs_diagnostic(student_id)
 
     events = EventLog()
     deps = GraphDeps(store, events)
     deps.retriever = Retriever()
     session = Session(
         student_id=student_id,
-        display_name=req.name.strip(),
+        display_name=display_name,
         store=store,
         events=events,
         graph=build_graph(deps),
         cfg={"configurable": {"thread_id": f"api-{student_id}"}},
         diagnostic=(
-            DiagnosticSession(graph=SkillGraph.from_yaml(SKILLS_CONFIG)) if is_new else None
+            DiagnosticSession(graph=SkillGraph.from_yaml(SKILLS_CONFIG))
+            if needs_diagnostic
+            else None
         ),
         language=language_spec.language.value,
     )
@@ -439,14 +549,17 @@ def start_session(req: StartRequest) -> dict[str, Any]:
     return {
         "student_id": student_id,
         "returning": not is_new,
-        "needs_diagnostic": is_new,
+        "needs_diagnostic": needs_diagnostic,
         "target_skill": req.target_skill,
         "language": {"value": language_spec.language.value, "label": language_spec.label},
     }
 
 
 @app.get("/session/{student_id}/diagnostic")
-def diagnostic_question(student_id: str) -> dict[str, Any]:
+def diagnostic_question(
+    student_id: str,
+    _account: Account | None = Depends(_student_owner),
+) -> dict[str, Any]:
     """The next probe, or the finished profile once there is nothing left to ask."""
     session = _session(student_id)
     if session.diagnostic is None:
@@ -456,6 +569,7 @@ def diagnostic_question(student_id: str) -> dict[str, Any]:
     if question is None:
         nodes, result = session.diagnostic.finish(MASTERY_THRESHOLD)
         session.store.save_skills(student_id, nodes)
+        session.store.mark_diagnosed(student_id)
         session.diagnostic = None
         return {
             "complete": True,
@@ -477,7 +591,11 @@ def diagnostic_question(student_id: str) -> dict[str, Any]:
 
 
 @app.post("/session/{student_id}/diagnostic")
-def diagnostic_answer(student_id: str, answer: DiagnosticAnswer) -> dict[str, Any]:
+def diagnostic_answer(
+    student_id: str,
+    answer: DiagnosticAnswer,
+    _account: Account | None = Depends(_student_owner),
+) -> dict[str, Any]:
     """Grade one diagnostic answer by running it, exactly as a real exercise is graded."""
     session = _session(student_id)
     if session.diagnostic is None:
@@ -497,8 +615,13 @@ def diagnostic_answer(student_id: str, answer: DiagnosticAnswer) -> dict[str, An
 
 
 @app.post("/session/{student_id}/start")
-def begin_tutoring(student_id: str, req: StartRequest) -> dict[str, Any]:
+def begin_tutoring(
+    student_id: str,
+    req: StartRequest,
+    account: Account | None = Depends(_student_owner),
+) -> dict[str, Any]:
     """Run the graph until it suspends waiting for the student."""
+    _require_name_in_name_mode(req, account)
     session = _session(student_id)
     language_spec = _language_or_400(req.language or session.language)
     session.language = language_spec.language.value
@@ -522,7 +645,11 @@ def begin_tutoring(student_id: str, req: StartRequest) -> dict[str, Any]:
 
 
 @app.post("/session/{student_id}/submit")
-def submit(student_id: str, req: SubmitRequest) -> dict[str, Any]:
+def submit(
+    student_id: str,
+    req: SubmitRequest,
+    _account: Account | None = Depends(_student_owner),
+) -> dict[str, Any]:
     """Resume the suspended graph with the student's code."""
     session = _session(student_id)
     session.state = session.graph.invoke(Command(resume={"code": req.code}), session.cfg)
@@ -530,12 +657,19 @@ def submit(student_id: str, req: SubmitRequest) -> dict[str, Any]:
 
 
 @app.get("/session/{student_id}")
-def current(student_id: str) -> dict[str, Any]:
+def current(
+    student_id: str,
+    _account: Account | None = Depends(_student_owner),
+) -> dict[str, Any]:
     return _view(_session(student_id))
 
 
 @app.post("/session/{student_id}/hints")
-def hints(student_id: str, req: SubmitRequest) -> dict[str, Any]:
+def hints(
+    student_id: str,
+    req: SubmitRequest,
+    _account: Account | None = Depends(_student_owner),
+) -> dict[str, Any]:
     """The hint ladder for whatever the student is stuck on, strongest last.
 
     Takes their draft, because an unfinished attempt says more about where they are
@@ -555,7 +689,10 @@ def hints(student_id: str, req: SubmitRequest) -> dict[str, Any]:
 
 
 @app.get("/student/{student_id}/plan")
-def learning_plan(student_id: str) -> dict[str, Any]:
+def learning_plan(
+    student_id: str,
+    _account: Account | None = Depends(_student_owner),
+) -> dict[str, Any]:
     """The learning plan: every skill, its state, and what it is waiting on.
 
     The STATE is decided here rather than in a client. Whether a skill is locked is a
@@ -613,6 +750,7 @@ def learning_plan(student_id: str) -> dict[str, Any]:
     return {
         "student_id": student_id,
         "suggested_next": suggested,
+        "total_attempts": len(store.attempts_for(student_id)),
         "counts": {
             "total": len(plan),
             "done": sum(1 for i in plan if i["state"] == "completed"),
@@ -634,7 +772,11 @@ def learning_plan(student_id: str) -> dict[str, Any]:
 
 
 @app.get("/student/{student_id}/activity")
-def activity(student_id: str, days: int = 120) -> dict[str, Any]:
+def activity(
+    student_id: str,
+    _account: Account | None = Depends(_student_owner),
+    days: int = 120,
+) -> dict[str, Any]:
     """Every attempt's timestamp, for a study-activity heatmap.
 
     Returns RAW UTC timestamps rather than day or hour buckets, and that is the whole
@@ -683,7 +825,10 @@ def activity(student_id: str, days: int = 120) -> dict[str, Any]:
 
 
 @app.get("/student/{student_id}/progress")
-def progress(student_id: str) -> dict[str, Any]:
+def progress(
+    student_id: str,
+    _account: Account | None = Depends(_student_owner),
+) -> dict[str, Any]:
     """Durable state, readable without an active session -- this is the dashboard."""
     store = StudentStore()
     if not store.exists(student_id):

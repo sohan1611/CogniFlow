@@ -40,7 +40,6 @@ from app.services.demo_runner import (  # noqa: E402
     DEMO_SEED,
     Behaviour,
     run_demo,
-    seed_student,
 )
 from app.services.diagnostic import (  # noqa: E402
     QUESTIONS,
@@ -533,15 +532,20 @@ else:
             store = StudentStore()
             is_new = store.ensure_student(active_student_id)
             if is_new:
-                # A named newcomer gets diagnosed rather than assumed. The seeded
-                # profile stays for the anonymous path, where there is no one to build
-                # a picture of and the demo scenario is the point.
-                seed_student(store, active_student_id)
+                # Curriculum priors are neutral scaffolding for the diagnostic, not
+                # evidence that the learner has already practised or mastered anything.
+                store.save_skills(
+                    active_student_id,
+                    SkillGraph.from_yaml("app/config/skills.yaml").nodes,
+                )
                 needs_diagnostic = True
             returning_student = not is_new
         else:
             store = StudentStore(":memory:")
-            seed_student(store, active_student_id)
+            store.seed(
+                active_student_id,
+                SkillGraph.from_yaml("app/config/skills.yaml").nodes,
+            )
 
         thread_id = f"ui-{active_student_id}"
         events = EventLog()

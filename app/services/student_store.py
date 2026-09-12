@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS students (
     student_id   TEXT PRIMARY KEY,
     domain       TEXT NOT NULL DEFAULT 'python_fundamentals',
     created_at   TEXT NOT NULL,
-    updated_at   TEXT NOT NULL
+    updated_at   TEXT NOT NULL,
+    diagnosed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS skill_mastery (
@@ -86,7 +87,8 @@ POSTGRES_SCHEMA = (
         student_id   TEXT PRIMARY KEY,
         domain       TEXT NOT NULL DEFAULT 'python_fundamentals',
         created_at   TEXT NOT NULL,
-        updated_at   TEXT NOT NULL
+        updated_at   TEXT NOT NULL,
+        diagnosed_at TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS skill_mastery (
         student_id     TEXT NOT NULL,
@@ -111,6 +113,7 @@ POSTGRES_SCHEMA = (
         created_at      TEXT NOT NULL
     )""",
     "CREATE INDEX IF NOT EXISTS idx_attempt_student ON attempt_log(student_id, skill)",
+    "ALTER TABLE students ADD COLUMN IF NOT EXISTS diagnosed_at TEXT",
 )
 
 POOL_APPLICATION_NAME = "cogniflow-engine"
@@ -214,11 +217,20 @@ class StudentStore:
         `CREATE TABLE IF NOT EXISTS` does nothing to a table that already exists, so a
         returning student whose row predates a new column would otherwise crash the load
         that was supposed to welcome them back. Additive and idempotent: it only ever
-        adds a missing column with a default, so it cannot lose data and can run on
-        every open. SQLite only -- every Postgres database was created with the column.
+        adds missing nullable or defaulted columns, so it cannot lose data and can run
+        on every open. SQLite only -- Postgres runs equivalent idempotent schema changes
+        when its connection pool is created.
         """
-        columns = {row["name"] for row in conn.execute("PRAGMA table_info(skill_mastery)")}
-        if "resolved_misconceptions" not in columns:
+        student_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(students)")
+        }
+        if "diagnosed_at" not in student_columns:
+            conn.execute("ALTER TABLE students ADD COLUMN diagnosed_at TEXT")
+
+        skill_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(skill_mastery)")
+        }
+        if "resolved_misconceptions" not in skill_columns:
             conn.execute(
                 "ALTER TABLE skill_mastery"
                 " ADD COLUMN resolved_misconceptions TEXT NOT NULL DEFAULT '[]'"
@@ -274,6 +286,39 @@ class StudentStore:
                 ).fetchone()
                 is not None
             )
+
+    def mark_diagnosed(self, student_id: str) -> None:
+        """Persist that this student completed the diagnostic."""
+        now = _now()
+        with self._connect() as conn:
+            conn.execute(
+                self._sql(
+                    "UPDATE students SET diagnosed_at = ?, updated_at = ?"
+                    " WHERE student_id = ?"
+                ),
+                (now, now, student_id),
+            )
+
+    def needs_diagnostic(self, student_id: str) -> bool:
+        """Whether this student has neither a completed check nor real attempts.
+
+        The attempt check protects learners whose history predates ``diagnosed_at``:
+        their NULL marker must not cause a diagnostic to overwrite measured progress.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                self._sql(
+                    "SELECT s.diagnosed_at, EXISTS ("
+                    " SELECT 1 FROM attempt_log AS a WHERE a.student_id = s.student_id"
+                    ") AS has_attempts FROM students AS s WHERE s.student_id = ?"
+                ),
+                (student_id,),
+            ).fetchone()
+        return bool(
+            row is not None
+            and row["diagnosed_at"] is None
+            and not row["has_attempts"]
+        )
 
     # -- mastery -----------------------------------------------------------
     def load_skills(self, student_id: str) -> dict[str, SkillNode]:

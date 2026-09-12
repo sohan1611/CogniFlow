@@ -106,6 +106,9 @@ def _exercise(store: StudentStore, sid: str) -> dict:
     """Every public method, in the order the API uses them. Returns what a caller sees."""
     created = store.ensure_student(sid)
     created_again = store.ensure_student(sid)
+    needs_diagnostic_before = store.needs_diagnostic(sid)
+    store.mark_diagnosed(sid)
+    needs_diagnostic_after = store.needs_diagnostic(sid)
     store.seed(
         sid,
         {
@@ -132,6 +135,8 @@ def _exercise(store: StudentStore, sid: str) -> dict:
     return {
         "created": created,
         "created_again": created_again,
+        "needs_diagnostic_before": needs_diagnostic_before,
+        "needs_diagnostic_after": needs_diagnostic_after,
         "exists": store.exists(sid),
         "stranger_exists": store.exists(sid + "-nobody"),
         "skills": {name: node.model_dump() for name, node in store.load_skills(sid).items()},
@@ -150,6 +155,8 @@ def _exercise(store: StudentStore, sid: str) -> dict:
 def test_sqlite_round_trips_every_method(tmp_path: Path) -> None:
     seen = _exercise(StudentStore(tmp_path / "s.db"), "ada")
     assert seen["created"] is True and seen["created_again"] is False
+    assert seen["needs_diagnostic_before"] is True
+    assert seen["needs_diagnostic_after"] is False
     assert seen["exists"] is True and seen["stranger_exists"] is False
     assert seen["skills"]["variables"]["mastery"] == 0.6123456789
     assert seen["skills"]["variables"]["resolved_misconceptions"] == ["off_by_one"]

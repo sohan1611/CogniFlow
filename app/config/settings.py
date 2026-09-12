@@ -39,6 +39,14 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("DATABASE_URL", "COGNIFLOW_DATABASE_URL"),
     )
+    # A public Neon Auth endpoint. Setting it makes account JWTs mandatory for every
+    # student route; leaving it unset preserves local name-based identity.
+    neon_auth_base_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "NEON_AUTH_BASE_URL", "COGNIFLOW_NEON_AUTH_BASE_URL"
+        ),
+    )
     checkpoint_path: Path = Path("data/checkpoints")
     chroma_path: Path = Path("data/chroma")
     sandbox: Literal["subprocess", "docker"] = "subprocess"
