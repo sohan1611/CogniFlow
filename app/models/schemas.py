@@ -15,13 +15,17 @@ from app.models.enums import (
     TeachingMode,
 )
 
+# BKTParams.p_init is the source of truth for this prior.  schemas.py cannot import
+# app.mastery.bkt without creating a cycle, so a regression test keeps the two equal.
+DEFAULT_MASTERY_PRIOR = 0.30
+
 
 class SkillNode(BaseModel):
     """State for one skill in the prerequisite graph."""
 
     skill: str
-    mastery: float = Field(ge=0.0, le=1.0)
-    confidence: float = Field(ge=0.0, le=1.0)
+    mastery: float = Field(ge=0.0, le=1.0, default=DEFAULT_MASTERY_PRIOR)
+    confidence: float = Field(ge=0.0, le=1.0, default=0.0)
     attempts: int = Field(ge=0, default=0)
     prerequisites: list[str] = Field(default_factory=list)
 
@@ -70,6 +74,7 @@ class DiagnosticResult(BaseModel):
     missing_prerequisites: list[str]
     confidence: float = Field(ge=0.0, le=1.0)
     evidence: list[str] = Field(default_factory=list)
+    skipped_because: dict[str, str] = Field(default_factory=dict)
 
 
 class PlanningDecision(BaseModel):

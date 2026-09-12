@@ -310,6 +310,14 @@ class StudentStore:
                 is not None
             )
 
+    def student_ids(self) -> list[str]:
+        """Every stored student id, in deterministic order."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT student_id FROM students ORDER BY student_id"
+            ).fetchall()
+        return [row["student_id"] for row in rows]
+
     def mark_diagnosed(self, student_id: str) -> None:
         """Persist that this student completed the diagnostic."""
         now = _now()
@@ -418,6 +426,49 @@ class StudentStore:
         with self._connect() as conn:
             for node in nodes.values():
                 self._write_skill(conn, student_id, node)
+
+    def reset_mastery(self, student_id: str, prior: float) -> tuple[int, int]:
+        """Reset one student's evidence and make the diagnostic available again.
+
+        These three changes belong in one transaction. ``needs_diagnostic`` returns
+        False if ANY attempt row survives, so resetting skills alone would strand the
+        student with unmeasured cards, no diagnostic on offer, and a stale attempt total.
+        Returns ``(skill_count, deleted_attempt_count)`` for the command-line summary.
+        """
+        now = _now()
+        with self._connect() as conn:
+            skill_count = conn.execute(
+                self._sql(
+                    "SELECT COUNT(*) AS count FROM skill_mastery WHERE student_id = ?"
+                ),
+                (student_id,),
+            ).fetchone()["count"]
+            attempt_count = conn.execute(
+                self._sql(
+                    "SELECT COUNT(*) AS count FROM attempt_log WHERE student_id = ?"
+                ),
+                (student_id,),
+            ).fetchone()["count"]
+            conn.execute(
+                self._sql(
+                    "UPDATE skill_mastery SET mastery = ?, confidence = 0, attempts = 0,"
+                    " evidence_weight = 0, agree_correct = 0, agree_wrong = 0,"
+                    " updated_at = ? WHERE student_id = ?"
+                ),
+                (prior, now, student_id),
+            )
+            conn.execute(
+                self._sql("DELETE FROM attempt_log WHERE student_id = ?"),
+                (student_id,),
+            )
+            conn.execute(
+                self._sql(
+                    "UPDATE students SET diagnosed_at = NULL, updated_at = ?"
+                    " WHERE student_id = ?"
+                ),
+                (now, student_id),
+            )
+        return int(skill_count), int(attempt_count)
 
     def seed(self, student_id: str, nodes: dict[str, SkillNode]) -> None:
         """Initialise a student with a starting skill graph (used by the demo)."""

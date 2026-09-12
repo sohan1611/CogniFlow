@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 
 from app.mastery.policy import MASTERY_THRESHOLD
-from app.mastery.skill_graph import SkillGraph
+from app.mastery.skill_graph import SkillGraph, weakest_startable
 from app.models.enums import StudentOutcome
 from app.services.diagnostic import (
     QUESTIONS,
@@ -89,18 +89,60 @@ def test_mastery_comes_from_evidence_not_a_constant(graph: SkillGraph) -> None:
     assert strong_nodes["variables"].mastery != weak_nodes["variables"].mastery
 
 
-def test_a_skipped_skill_is_not_recorded_as_unknown(graph: SkillGraph) -> None:
-    """We did not test it, but we have real evidence they are not ready for it.
-
-    Leaving it at 0.5 would let the planner send them straight at a skill we already
-    know is blocked.
-    """
+def test_a_skipped_skill_is_unmeasured_and_records_why(graph: SkillGraph) -> None:
+    """A pruned question stays unknown; prerequisite evidence is not its measurement."""
     session, _ = _run(
         graph,
         lambda s: StudentOutcome.WRONG_ANSWER if s == "functions" else StudentOutcome.CORRECT,
     )
-    nodes, _ = session.finish(MASTERY_THRESHOLD)
-    assert nodes["recursion"].mastery < MASTERY_THRESHOLD
+    nodes, result = session.finish(MASTERY_THRESHOLD)
+
+    skipped = nodes["recursion"]
+    assert skipped.mastery == UNKNOWN_MASTERY
+    assert skipped.confidence == 0.0
+    assert skipped.attempts == 0
+    assert skipped.evidence_weight == 0.0
+    assert skipped.agree_correct == 0.0
+    assert skipped.agree_wrong == 0.0
+    assert skipped.measured is False
+    assert result.skipped_because["recursion"] == "functions"
+    assert result.weak_skills[0] == "functions"
+    measured_flags = [nodes[skill].measured for skill in result.weak_skills]
+    assert measured_flags == sorted(measured_flags, reverse=True)
+
+
+def test_removing_the_skipped_cap_does_not_change_routing(graph: SkillGraph) -> None:
+    """Prerequisite gating already keeps skipped descendants out of the startable set."""
+    session, _ = _run(
+        graph,
+        lambda s: StudentOutcome.WRONG_ANSWER if s == "functions" else StudentOutcome.CORRECT,
+    )
+    nodes, result = session.finish(MASTERY_THRESHOLD)
+
+    # Reconstruct the deleted behaviour to prove the routing verdict did not depend on it.
+    legacy_nodes = dict(nodes)
+    for skill, blocker in result.skipped_because.items():
+        legacy_nodes[skill] = nodes[skill].model_copy(
+            update={
+                "mastery": min(
+                    nodes[blocker].mastery,
+                    MASTERY_THRESHOLD - 0.05,
+                )
+            }
+        )
+    legacy_graph = SkillGraph(legacy_nodes)
+    legacy_weak = sorted(
+        (s for s, n in legacy_nodes.items() if n.mastery < MASTERY_THRESHOLD),
+        key=lambda s: (
+            legacy_nodes[s].mastery,
+            bool(legacy_graph.unmastered_prerequisites(s, MASTERY_THRESHOLD)),
+            s,
+        ),
+    )
+
+    assert weakest_startable(nodes, MASTERY_THRESHOLD) == "functions"
+    assert weakest_startable(legacy_nodes, MASTERY_THRESHOLD) == "functions"
+    assert result.target_skill == legacy_weak[0] == "functions"
 
 
 def test_result_names_the_weakest_skill_and_its_gaps(graph: SkillGraph) -> None:

@@ -40,6 +40,10 @@ const BLURBS: Record<string, string> = {
    lived here privately -- one student, one skill, two names. */
 export const pretty = (s: string) => LABELS[s] ?? s.replace(/_/g, " ");
 export const skillBlurb = (s: string) => BLURBS[s] ?? "A skill in this course.";
+export function notMeasuredLabel(reason: string | null) {
+  if (reason === null) return "Not checked yet";
+  return `Not checked — we stopped because ${pretty(reason)} needs work first.`;
+}
 
 export function LearningPlan({
   plan,
@@ -62,7 +66,7 @@ export function LearningPlan({
   const shown = needle
     ? plan.skills.filter((s) => pretty(s.skill).toLowerCase().includes(needle))
     : plan.skills;
-  const unlocked = plan.counts.total - plan.counts.upcoming;
+  const unlocked = plan.counts.done + plan.counts.provisional;
 
   return (
     <section className="roadmap-section" aria-labelledby="roadmap-title">
@@ -130,7 +134,18 @@ function spineGlyph(skill: PlanSkill, active: boolean) {
   if (skill.state === "completed") return "✓";
   if (skill.state === "provisional") return "◐";
   if (skill.state === "locked") return "🔒";
+  if (skill.state === "unmeasured") return "?";
   return "+";
+}
+
+function measurementLabel(value: number | null, suffix: string) {
+  if (value === null) return "Not checked yet";
+  return `${(value * 100).toFixed(0)}% ${suffix}`;
+}
+
+function measurementWidth(value: number | null) {
+  if (value === null) return "0%";
+  return `${Math.max(2, Math.min(1, value) * 100)}%`;
 }
 
 function SkillCard({
@@ -148,7 +163,9 @@ function SkillCard({
   onStart: () => void;
   busy: boolean;
 }) {
-  const locked = skill.state === "locked";
+  const unmeasured = skill.state === "unmeasured";
+  const locked =
+    skill.state === "locked" || skill.not_measured_because !== null;
   const done = skill.state === "completed";
   const provisional = skill.state === "provisional";
   const statusClass = done
@@ -158,9 +175,15 @@ function SkillCard({
       : provisional
         ? "chip maybe"
         : "chip";
-  const statusLabel = skill.state;
-  const progressLabel = locked ? skill.state : `${(skill.mastery * 100).toFixed(0)}% complete`;
-  const statusTitle = provisional ? "Answered well once — one more to be sure" : undefined;
+  const statusLabel = unmeasured ? "Not checked yet" : skill.state;
+  const progressLabel = unmeasured
+    ? "Not checked yet"
+    : locked
+      ? skill.state
+      : measurementLabel(skill.mastery, "complete");
+  const statusTitle = provisional
+    ? "Answered well once — one more to be sure"
+    : undefined;
   return (
     <article
       className={`card roadmap-card${active ? " active" : ""}${locked ? " locked" : ""}${
@@ -208,11 +231,17 @@ function SkillCard({
 
         {/* Locked is not a wall, it is an explanation. Saying which prerequisite is
             blocking turns "you can't" into "do this first". */}
-        {locked && (
+        {unmeasured && skill.not_measured_because !== null ? (
+          <p className="muted roadmap-wait">
+            {notMeasuredLabel(skill.not_measured_because)}
+          </p>
+        ) : unmeasured ? (
+          <p className="muted roadmap-wait">Not checked yet</p>
+        ) : locked ? (
           <p className="muted roadmap-wait">
             Waiting on {skill.blocked_by.map(pretty).join(", ")}
           </p>
-        )}
+        ) : null}
 
         {provisional && (
           <p className="muted roadmap-wait">
@@ -221,7 +250,12 @@ function SkillCard({
         )}
 
         <div className="bar" aria-hidden>
-          <span style={{ width: `${Math.max(2, Math.min(1, skill.mastery) * 100)}%` }} />
+          <span
+            style={{
+              width: measurementWidth(skill.mastery),
+              opacity: unmeasured ? 0.35 : 1,
+            }}
+          />
         </div>
 
         <div className="foot" style={{ marginTop: 12 }}>
@@ -232,7 +266,7 @@ function SkillCard({
           </span>
 
           <div className="row skill-action" style={{ gap: 6 }}>
-            <span className="muted">{(skill.mastery * 100).toFixed(0)}% mastery</span>
+            <span className="muted">{measurementLabel(skill.mastery, "mastery")}</span>
             {active && (
               <button className="play mobile-play" onClick={onStart} disabled={busy} aria-label="Continue">
                 ▶

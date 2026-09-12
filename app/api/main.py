@@ -587,6 +587,7 @@ def diagnostic_question(
             "confidence": result.confidence,
             "mastery": {s: n.mastery for s, n in nodes.items()},
             "evidence": result.evidence,
+            "skipped_because": result.skipped_because,
         }
 
     return {
@@ -725,7 +726,9 @@ def learning_plan(
         # something upstream, which is the tutor's problem and not theirs.
         blocking = graph.unmastered_prerequisites(name, MASTERY_THRESHOLD)
 
-        if is_mastered(node.mastery, node.confidence):
+        if not node.measured:
+            state = "unmeasured"
+        elif is_mastered(node.mastery, node.confidence):
             state = "completed"
         elif node.mastery >= MASTERY_THRESHOLD:
             # Answered well, but on thin evidence. Checked BEFORE `locked` on purpose:
@@ -741,11 +744,14 @@ def learning_plan(
             {
                 "skill": name,
                 "state": state,
-                "mastery": round(node.mastery, 4),
-                "confidence": round(node.confidence, 4),
+                "mastery": round(node.mastery, 4) if node.measured else None,
+                "confidence": round(node.confidence, 4) if node.measured else None,
                 "attempts": node.attempts,
                 "prerequisites": graph.prerequisites(name),
                 "blocked_by": blocking,
+                "not_measured_because": (
+                    blocking[0] if not node.measured and blocking else None
+                ),
                 "unlocks": graph.dependents(name),
                 "misconceptions": node.misconceptions,
                 "overcome": node.resolved_misconceptions,
@@ -768,12 +774,13 @@ def learning_plan(
             # real, and burying that in "upcoming" throws it away -- but calling it
             # "done" is the overclaim this state exists to stop.
             "provisional": sum(1 for i in plan if i["state"] == "provisional"),
-            # The three counts PARTITION the total, so they can be read side by side and
+            "unmeasured": sum(1 for i in plan if i["state"] == "unmeasured"),
+            # The four counts PARTITION the total, so they can be read side by side and
             # add up. Before "provisional" existed, upcoming meant "not completed" and
             # that was the same thing; with a third state it silently started counting
             # the middle bucket twice -- 0 done, 3 looking good, 8 upcoming, out of 8.
             "upcoming": sum(
-                1 for i in plan if i["state"] not in ("completed", "provisional")
+                1 for i in plan if i["state"] in ("locked", "available")
             ),
         },
         "skills": plan,
@@ -844,38 +851,43 @@ def progress(
         raise HTTPException(404, f"no student {student_id!r}")
     nodes = store.load_skills(student_id)
     attempts = store.attempts_for(student_id)
-    return {
-        "student_id": student_id,
-        "overall_mastery": (
-            sum(n.mastery for n in nodes.values()) / len(nodes) if nodes else 0.0
-        ),
-        "skills": [
+    graph = SkillGraph(nodes)
+    measured = [node for node in nodes.values() if node.measured]
+    skills = []
+    for name, node in sorted(
+        nodes.items(), key=lambda item: (not item[1].measured, item[1].mastery, item[0])
+    ):
+        blocking = graph.unmastered_prerequisites(name, MASTERY_THRESHOLD)
+        if not node.measured:
+            state = "unmeasured"
+        elif is_mastered(node.mastery, node.confidence):
+            state = "completed"
+        elif node.mastery >= MASTERY_THRESHOLD:
+            state = "provisional"
+        else:
+            state = "unproven"
+        skills.append(
             {
                 "skill": name,
-                # Same word, same predicate, same authority as the learning plan. A
-                # client deciding for itself whether 0.85-at-0.22 counts as mastered is
-                # how the plan came to award five "Completed" topics the guard would not
-                # have advanced on -- and two screens disagreeing about one student is
-                # worse than either being wrong alone.
-                #
-                # "locked" is absent on purpose: that is a routing judgement about what
-                # to do next, and this screen answers a different question -- what the
-                # tutor believes, which does not depend on where the student may go.
-                "state": (
-                    "completed"
-                    if is_mastered(node.mastery, node.confidence)
-                    else "provisional"
-                    if node.mastery >= MASTERY_THRESHOLD
-                    else "unproven"
-                ),
-                "mastery": node.mastery,
-                "confidence": node.confidence,
+                "state": state,
+                "mastery": node.mastery if node.measured else None,
+                "confidence": node.confidence if node.measured else None,
                 "attempts": node.attempts,
+                "not_measured_because": (
+                    blocking[0] if not node.measured and blocking else None
+                ),
                 "misconceptions": node.misconceptions,
                 "overcome": node.resolved_misconceptions,
             }
-            for name, node in sorted(nodes.items(), key=lambda kv: kv[1].mastery)
-        ],
+        )
+    return {
+        "student_id": student_id,
+        "overall_mastery": (
+            sum(node.mastery for node in measured) / len(measured) if measured else None
+        ),
+        "measured_count": len(measured),
+        "total_count": len(nodes),
+        "skills": skills,
         "recent_attempts": [
             {
                 "skill": row["skill"],

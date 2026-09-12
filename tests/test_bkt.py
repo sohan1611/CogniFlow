@@ -11,7 +11,14 @@ from app.mastery.bkt import MASTERY_CEILING, BKTParams, posterior, update
 from app.mastery.evidence import Observation, accumulate, confidence_from_evidence
 from app.models.enums import StudentOutcome, SystemFault
 from app.models.errors import InvalidEvidenceError
-from app.models.schemas import SkillNode
+from app.models.schemas import DEFAULT_MASTERY_PRIOR, SkillNode
+
+
+def test_schema_default_prior_matches_bkt_source_of_truth() -> None:
+    """The schema duplicates p_init only to avoid the schemas <-> mastery import cycle."""
+    assert DEFAULT_MASTERY_PRIOR == BKTParams().p_init
+    assert SkillNode(skill="variables").mastery == BKTParams().p_init
+    assert SkillNode(skill="variables").confidence == 0.0
 
 
 def test_correct_never_decreases_mastery() -> None:

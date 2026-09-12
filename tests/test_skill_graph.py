@@ -6,10 +6,11 @@ Invariant: prerequisite graphs are acyclic and address only known skills.
 from pathlib import Path
 
 import pytest
+import yaml
 
 from app.mastery.skill_graph import SkillGraph
 from app.models.errors import SkillGraphError
-from app.models.schemas import SkillNode
+from app.models.schemas import DEFAULT_MASTERY_PRIOR, SkillNode
 
 
 def node(
@@ -178,6 +179,17 @@ def test_the_next_skill_is_chosen_by_one_rule_even_on_a_tie() -> None:
     picked = {weakest_startable(nodes, 0.6) for _ in range(20)}
     assert len(picked) == 1, f"a tie must resolve deterministically, got {picked}"
     assert picked == {"functions"}, "alphabetical tie-break"
+
+
+def test_skills_yaml_is_only_the_prerequisite_dag() -> None:
+    raw = yaml.safe_load(Path("app/config/skills.yaml").read_text(encoding="utf-8"))
+    for payload in raw.values():
+        assert set(payload) == {"skill", "prerequisites", "misconceptions"}
+
+    nodes = SkillGraph.from_yaml(Path("app/config/skills.yaml")).nodes
+    assert all(node.mastery == DEFAULT_MASTERY_PRIOR for node in nodes.values())
+    assert all(node.confidence == 0.0 for node in nodes.values())
+    assert all(node.attempts == 0 for node in nodes.values())
 
 
 def test_a_locked_skill_is_never_suggested() -> None:

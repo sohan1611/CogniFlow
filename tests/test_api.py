@@ -138,6 +138,12 @@ def test_progress_is_readable_without_an_active_session(client: TestClient) -> N
     assert body["skills"], "a student initialized from the curriculum has skills"
     assert "overcome" in body["skills"][0], "resolved misconceptions must be exposed"
     assert body["total_attempts"] == 0
+    assert body["overall_mastery"] is None
+    assert body["measured_count"] == 0
+    assert body["total_count"] == len(body["skills"])
+    assert all(skill["state"] == "unmeasured" for skill in body["skills"])
+    assert all(skill["mastery"] is None for skill in body["skills"])
+    assert all(skill["confidence"] is None for skill in body["skills"])
 
 
 def test_progress_for_an_unknown_student_is_404(client: TestClient) -> None:
@@ -164,14 +170,28 @@ def test_plan_states_come_from_the_engine_not_the_client(client: TestClient) -> 
     states = {s["skill"]: s for s in body["skills"]}
     assert set(states) == {s["skill"] for s in client.get("/skills").json()["skills"]}
     for item in states.values():
-        assert item["state"] in {"completed", "locked", "available"}
+        assert item["state"] in {
+            "unmeasured", "completed", "provisional", "locked", "available"
+        }
         if item["state"] == "locked":
             assert item["blocked_by"], "a locked skill must say what is blocking it"
         if item["state"] == "available":
             assert not item["blocked_by"]
+        if item["state"] == "unmeasured":
+            assert item["mastery"] is None
+            assert item["confidence"] is None
+            assert item["not_measured_because"] == (
+                item["blocked_by"][0] if item["blocked_by"] else None
+            )
 
     assert body["counts"]["total"] == len(states)
-    assert body["counts"]["done"] + body["counts"]["upcoming"] == body["counts"]["total"]
+    assert (
+        body["counts"]["done"]
+        + body["counts"]["provisional"]
+        + body["counts"]["unmeasured"]
+        + body["counts"]["upcoming"]
+        == body["counts"]["total"]
+    )
 
 
 def test_suggested_next_is_startable_not_merely_weakest(client: TestClient) -> None:
@@ -182,7 +202,8 @@ def test_suggested_next_is_startable_not_merely_weakest(client: TestClient) -> N
     suggested = body["suggested_next"]
     if suggested is not None:
         item = next(s for s in body["skills"] if s["skill"] == suggested)
-        assert item["state"] == "available"
+        assert item["state"] in ("available", "unmeasured")
+        assert item["not_measured_because"] is None
 
 
 def test_plan_for_an_unknown_student_is_404(client: TestClient) -> None:
@@ -341,7 +362,10 @@ def test_one_right_answer_is_not_a_completed_topic(client: TestClient) -> None:
 
     thin = [
         s for s in skills
-        if s["mastery"] >= MASTERY_THRESHOLD and not is_mastered(s["mastery"], s["confidence"])
+        if s["mastery"] is not None
+        and s["confidence"] is not None
+        and s["mastery"] >= MASTERY_THRESHOLD
+        and not is_mastered(s["mastery"], s["confidence"])
     ]
     assert thin, "this test proves nothing unless the diagnostic produced thin evidence"
     assert all(s["state"] == "provisional" for s in thin), (
@@ -372,7 +396,7 @@ def test_a_high_scoring_skill_is_never_locked_behind_a_weak_prerequisite(
     """
     plan = _sit_the_diagnostic(client, "aarav")
     for skill in plan["skills"]:
-        if skill["mastery"] >= MASTERY_THRESHOLD:
+        if skill["mastery"] is not None and skill["mastery"] >= MASTERY_THRESHOLD:
             assert skill["state"] != "locked", (
                 f"{skill['skill']} scores {skill['mastery']} and was locked anyway"
             )
@@ -430,15 +454,21 @@ def test_the_plan_points_where_the_diagnostic_pointed(client: TestClient) -> Non
 
 
 def test_the_plan_counts_add_up(client: TestClient) -> None:
-    """Three numbers shown side by side must be readable as three buckets.
+    """Four counts shown together must partition the curriculum.
 
     Adding "provisional" without touching "upcoming" -- which meant "not completed" --
-    put the middle bucket in two places at once: 0 done, 3 looking good, 8 upcoming, out
-    of a total of 8. Nobody reads that as containment; they read it as a bug.
+    put the middle bucket in two places at once. Unmeasured is now a fourth disjoint
+    bucket, not another synonym for upcoming.
     """
     plan = _sit_the_diagnostic(client, "rhea")
     counts = plan["counts"]
-    assert counts["done"] + counts["provisional"] + counts["upcoming"] == counts["total"]
+    assert (
+        counts["done"]
+        + counts["provisional"]
+        + counts["unmeasured"]
+        + counts["upcoming"]
+        == counts["total"]
+    )
     assert counts["total"] == len(plan["skills"])
 
 
@@ -467,6 +497,8 @@ def test_progress_and_plan_never_disagree_about_one_student(client: TestClient) 
             assert plan_state[skill] == standing, (
                 f"{skill}: progress says {standing!r}, plan says {plan_state[skill]!r}"
             )
+        elif standing == "unmeasured":
+            assert plan_state[skill] == "unmeasured"
         else:
             assert plan_state[skill] in ("locked", "available"), (
                 f"{skill}: progress says unproven, plan says {plan_state[skill]!r}"
@@ -487,12 +519,28 @@ def test_progress_reports_the_evidence_not_just_the_estimate(client: TestClient)
 
     assert progress["skills"], "a student with a profile must have skills to show"
     for skill in progress["skills"]:
-        assert {"state", "mastery", "confidence", "attempts"} <= set(skill), skill
-        assert 0.0 <= skill["confidence"] <= 1.0
+        assert {
+            "state", "mastery", "confidence", "attempts", "not_measured_because"
+        } <= set(skill), skill
+        if skill["state"] == "unmeasured":
+            assert skill["mastery"] is None
+            assert skill["confidence"] is None
+        else:
+            assert 0.0 <= skill["mastery"] <= 1.0
+            assert 0.0 <= skill["confidence"] <= 1.0
         assert skill["attempts"] >= 0
 
-    masteries = [s["mastery"] for s in progress["skills"]]
+    masteries = [
+        s["mastery"] for s in progress["skills"] if s["mastery"] is not None
+    ]
     assert masteries == sorted(masteries), "weakest first is the useful order here"
+    first_unmeasured = next(
+        (i for i, skill in enumerate(progress["skills"]) if skill["state"] == "unmeasured"),
+        len(progress["skills"]),
+    )
+    assert all(
+        skill["state"] == "unmeasured" for skill in progress["skills"][first_unmeasured:]
+    )
 
 
 def test_activity_returns_instants_not_buckets(client: TestClient) -> None:
@@ -537,17 +585,51 @@ def test_activity_404s_for_an_unknown_student(client: TestClient) -> None:
     assert client.get("/student/nobody-at-all/activity").status_code == 404
 
 
-def test_a_difficulty_change_arrives_with_its_reason(client: TestClient) -> None:
+def test_a_difficulty_change_arrives_with_its_reason(
+    client: TestClient, tmp_path: Path
+) -> None:
     """Moving a student between levels without saying why reads as arbitrary.
 
     The guard already computes a reason for every adaptation and the log already records
     the difficulty of every problem. This asserts the two are carried to the frontend
     together, so the screen can say "EASY -> MEDIUM" and then why.
     """
+    from app.mastery.bkt import BKTParams
+    from app.mastery.evidence import confidence_from_evidence
+    from app.services.student_store import StudentStore
+
     client.post("/session", json={"name": "Ishan"})
+    store = StudentStore(tmp_path / "api.db")
+    loops = store.load_skills("ishan")["loops"]
+    # Set the starting state explicitly rather than leaning on a prior. An unmeasured
+    # student now begins at EASY (_difficulty_for returns EASY below 0.40) and has
+    # nowhere to step down to, so without this the test would be asserting a transition
+    # that cannot happen.
+    #
+    # 0.55 is chosen to sit in a narrow band and both edges matter: at or above 0.40 so
+    # the first problem is MEDIUM and a step DOWN exists, and below MASTERY_THRESHOLD
+    # 0.60 so the skill is not already complete -- a mastered skill ends the session
+    # before it ever serves a problem to fail.
+    loops.mastery = 0.55
+    loops.attempts = 2
+    loops.evidence_weight = 2.0
+    loops.agree_correct = 2.0
+    loops.agree_wrong = 0.0
+    params = BKTParams()
+    loops.confidence = confidence_from_evidence(
+        loops.evidence_weight,
+        loops.agree_correct,
+        loops.agree_wrong,
+        params.p_slip,
+        params.p_guess,
+    )
+    store.save_skill("ishan", loops)
+
     view = client.post(
         "/session/ishan/start", json={"name": "Ishan", "target_skill": "loops"}
     ).json()
+    assert "loops" in view["measured"]
+    assert view["difficulty"] == "MEDIUM", "0.55 sits in the MEDIUM band, with EASY below it"
     assert "difficulty_change" in view, "the field must always exist, even when null"
     assert view["difficulty_change"] is None, "nothing has changed on the first problem"
 
@@ -570,3 +652,31 @@ def test_a_difficulty_change_arrives_with_its_reason(client: TestClient) -> None
     assert "insufficient evidence" not in (seen["student_reason"] or ""), (
         "the student sentence must not just echo the internal one"
     )
+
+
+def test_an_unmeasured_student_stays_at_easy_after_repeated_failure(
+    client: TestClient,
+) -> None:
+    client.post("/session", json={"name": "Nila"})
+    view = client.post(
+        "/session/nila/start", json={"name": "Nila", "target_skill": "loops"}
+    ).json()
+
+    assert "loops" not in view["measured"]
+    assert view["difficulty"] == "EASY"
+
+    for _ in range(2):
+        view = client.post(
+            "/session/nila/submit", json={"code": "print('wrong')"}
+        ).json()
+
+    adaptations = [
+        event for event in view["events"] if event["type"] == "adaptation"
+    ]
+    assert adaptations[-1]["payload"]["action"] == "EXPLAIN_DIFFERENTLY"
+    assert all(
+        event["payload"]["action"] != "STEP_DOWN_DIFFICULTY"
+        for event in adaptations
+    )
+    assert view["difficulty"] == "EASY"
+    assert view["difficulty_change"] is None

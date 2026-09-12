@@ -52,10 +52,12 @@ def test_new_student_starts_at_curriculum_priors(
 
     assert stored == expected
     assert all(node.attempts == 0 for node in stored.values())
+    assert all(not node.measured for node in stored.values())
 
     plan = client.get("/student/nila/plan").json()
     assert plan["counts"]["done"] == 0
     assert plan["counts"]["provisional"] == 0
+    assert plan["counts"]["unmeasured"] == len(stored)
     assert plan["total_attempts"] == 0
 
 

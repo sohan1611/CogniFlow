@@ -434,6 +434,7 @@ export type DiagnosticStep =
       confidence: number;
       mastery: Record<string, number>;
       evidence: string[];
+      skipped_because: Record<string, string>;
     };
 
 export type TutorEvent = {
@@ -503,12 +504,13 @@ export type PlanSkill = {
    *  BKT at 0.85 mastery on 0.22 confidence, which the guard will not ADVANCE on. Shown
    *  as its own thing because calling it "completed" told students they had finished
    *  five topics they had answered one question about. */
-  state: "completed" | "provisional" | "locked" | "available";
-  mastery: number;
-  confidence: number;
+  state: "unmeasured" | "completed" | "provisional" | "locked" | "available";
+  mastery: number | null;
+  confidence: number | null;
   attempts: number;
   prerequisites: string[];
   blocked_by: string[];
+  not_measured_because: string | null;
   unlocks: string[];
   misconceptions: string[];
   overcome: string[];
@@ -517,14 +519,22 @@ export type PlanSkill = {
 export type Plan = {
   student_id: string;
   suggested_next: string | null;
-  counts: { total: number; done: number; provisional: number; upcoming: number };
+  counts: {
+    total: number;
+    done: number;
+    provisional: number;
+    unmeasured: number;
+    upcoming: number;
+  };
   skills: PlanSkill[];
   total_attempts: number;
 };
 
 export type Progress = {
   student_id: string;
-  overall_mastery: number;
+  overall_mastery: number | null;
+  measured_count: number;
+  total_count: number;
   skills: {
     skill: string;
     /** Decided by the ENGINE, from the same predicate as the learning plan. No
@@ -532,10 +542,11 @@ export type Progress = {
      *  whether 0.85-at-0.22 counts as mastered is how the plan came to award five
      *  "Completed" topics the guard would never have advanced on. "locked" is absent
      *  because it is a routing judgement, and this screen is about belief. */
-    state: "completed" | "provisional" | "unproven";
-    mastery: number;
-    confidence: number;
+    state: "unmeasured" | "completed" | "provisional" | "unproven";
+    mastery: number | null;
+    confidence: number | null;
     attempts: number;
+    not_measured_because: string | null;
     misconceptions: string[];
     overcome: string[];
   }[];

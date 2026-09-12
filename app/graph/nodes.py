@@ -202,7 +202,11 @@ def make_diagnose(deps: GraphDeps) -> Node:
         unmastered = graph.unmastered_prerequisites(target, MASTERY_THRESHOLD)
         weak = sorted(
             (s for s, n in graph.nodes.items() if n.mastery < MASTERY_THRESHOLD),
-            key=lambda s: graph.nodes[s].mastery,
+            key=lambda s: (
+                not graph.nodes[s].measured,
+                graph.nodes[s].mastery,
+                s,
+            ),
         )
         node = graph.nodes[target]
         record = {

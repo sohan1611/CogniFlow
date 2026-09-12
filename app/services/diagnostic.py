@@ -34,13 +34,13 @@ from app.mastery.evidence import (
 )
 from app.mastery.skill_graph import SkillGraph
 from app.models.enums import StudentOutcome
-from app.models.schemas import DiagnosticResult, SkillNode
+from app.models.schemas import DEFAULT_MASTERY_PRIOR, DiagnosticResult, SkillNode
 
 # The prior for someone we have never met. It is BKTParams.p_init and nothing else: this
 # module used to carry its own 0.5, which silently overrode the p_init the rest of the
 # system believed it was using, so two disagreeing priors existed and the documented one
 # was the unreachable one.
-UNKNOWN_MASTERY = BKTParams().p_init
+UNKNOWN_MASTERY = DEFAULT_MASTERY_PRIOR
 
 
 @dataclass(frozen=True)
@@ -231,20 +231,13 @@ class DiagnosticSession:
     def finish(self, mastery_threshold: float) -> tuple[dict[str, SkillNode], DiagnosticResult]:
         """The student profile this diagnostic justifies, and what it concluded.
 
-        A skipped skill inherits the belief its failed prerequisite earned, capped below
-        the mastery threshold. That is honest in both directions: we did not test it, but
-        we have real evidence they are not ready for it, and recording 0.5 "unknown"
-        would let the planner send them straight at a skill we already know is blocked.
+        A skipped skill keeps the prior and zero evidence. Readiness is enforced by the
+        prerequisite graph, so inventing a lower mastery would add no routing protection
+        and would falsely present an unasked question as a measurement.
         """
         nodes: dict[str, SkillNode] = {}
         for skill, node in self.graph.nodes.items():
             mastery, attempts, weight, agreed, against = self._beliefs[skill]
-            if skill in self.skipped:
-                blocker = self.skipped[skill]
-                inherited = self._beliefs.get(
-                    blocker, (UNKNOWN_MASTERY, 0, 0.0, 0.0, 0.0)
-                )[0]
-                mastery = min(inherited, mastery_threshold - 0.05)
             nodes[skill] = node.model_copy(
                 update={
                     "mastery": round(mastery, 4),
@@ -262,8 +255,12 @@ class DiagnosticSession:
             )
 
         graded = SkillGraph(nodes)
-        weak = sorted(
-            (s for s, n in nodes.items() if n.mastery < mastery_threshold),
+        measured_weak = sorted(
+            (
+                s
+                for s, n in nodes.items()
+                if n.measured and n.mastery < mastery_threshold
+            ),
             # Alphabetical tie-break, matching skill_graph.weakest_startable exactly.
             #
             # This deliberately still names the weakest skill OVERALL, even one that is
@@ -289,6 +286,12 @@ class DiagnosticSession:
                 s,
             ),
         )
+        unmeasured_weak = sorted(
+            skill
+            for skill, node in nodes.items()
+            if not node.measured and node.mastery < mastery_threshold
+        )
+        weak = measured_weak + unmeasured_weak
         target = weak[0] if weak else None
         missing = (
             graded.unmastered_prerequisites(target, mastery_threshold) if target else []
@@ -305,4 +308,5 @@ class DiagnosticSession:
             # not of how well they did. Four answers is a sketch; eight is a picture.
             confidence=round(coverage(len(self.answered)), 4),
             evidence=evidence,
+            skipped_because=dict(self.skipped),
         )

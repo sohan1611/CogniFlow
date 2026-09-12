@@ -26,7 +26,13 @@ import {
 import { engineCopy, useEngineStatus, type EngineStatus } from "@/lib/engine";
 import { StudentDashboard } from "./dashboard";
 import { CodeEditor } from "./editor";
-import { ActivityPanel, LearningPlan, pretty, skillBlurb } from "./plan";
+import {
+  ActivityPanel,
+  LearningPlan,
+  notMeasuredLabel,
+  pretty,
+  skillBlurb,
+} from "./plan";
 import { Shell, type Tab, useGlassSwap } from "./shell";
 import { authClient } from "@/lib/auth/client";
 
@@ -1000,6 +1006,9 @@ function FocusCard({
   onStart: () => void;
   busy: boolean;
 }) {
+  const unmeasured = skill.state === "unmeasured";
+  const blocked =
+    skill.state === "locked" || skill.not_measured_because !== null;
   const demand =
     active && view?.target_skill === skill.skill && view.difficulty_change?.demands
       ? view.difficulty_change.demands
@@ -1011,17 +1020,21 @@ function FocusCard({
         <p className="breadcrumb">{active ? "CURRENT FOCUS" : "NEXT UP"}</p>
         <h2 id="focus-title">{pretty(skill.skill)}</h2>
         <p className="sub">{demand}</p>
-        {skill.state === "locked" && skill.blocked_by.length > 0 && (
+        {unmeasured && skill.not_measured_because !== null ? (
+          <p className="muted">{notMeasuredLabel(skill.not_measured_because)}</p>
+        ) : skill.state === "locked" && skill.blocked_by.length > 0 ? (
           <p className="muted">Waiting on {skill.blocked_by.map(pretty).join(", ")}</p>
-        )}
+        ) : null}
       </div>
       <div className="focus-meter">
         <span className={`chip ${skill.state === "completed" ? "done" : skill.state === "provisional" ? "maybe" : ""}`}>
-          {skill.state}
+          {unmeasured ? "Not checked yet" : skill.state}
         </span>
-        <strong>{(skill.mastery * 100).toFixed(0)}%</strong>
-        <small className="muted">mastery estimate</small>
-        {skill.state !== "locked" && (
+        <strong>
+          {skill.mastery === null ? "Not checked yet" : `${(skill.mastery * 100).toFixed(0)}%`}
+        </strong>
+        <small className="muted">{unmeasured ? "no measurement yet" : "mastery estimate"}</small>
+        {!blocked && (
           <button type="button" className="btn continue-btn" onClick={onStart} disabled={busy}>
             Continue {pretty(skill.skill)}
           </button>
@@ -1356,15 +1369,26 @@ function Learn({
 /* Server-assigned standing, rendered. Deliberately a lookup rather than a threshold
    comparison: this file must never decide for itself what counts as mastered. */
 const STANDING_CHIP: Record<string, string> = {
+  unmeasured: "chip",
   completed: "chip done",
   provisional: "chip maybe",
   unproven: "chip",
 };
 const STANDING_LABEL: Record<string, string> = {
+  unmeasured: "Not checked yet",
   completed: "Confirmed",
   provisional: "Looks good",
   unproven: "Not shown yet",
 };
+
+function measuredSummary(
+  mastery: number | null,
+  confidence: number | null,
+  attempts: number,
+) {
+  if (mastery === null || confidence === null) return null;
+  return `${(mastery * 100).toFixed(0)}% estimated · ${(confidence * 100).toFixed(0)}% confidence · ${attempts} attempt${attempts === 1 ? "" : "s"}`;
+}
 
 /* The tutor's own working notes, kept off every student-facing screen.
  *
@@ -1475,26 +1499,36 @@ function ProgressView({ progress, activity }: { progress: Progress; activity: Ac
           topic answered right once scores high and is believed very little.
         </p>
 
-        {progress.skills.map((s) => (
-          <div className="standing" key={s.skill}>
-            <div className="spread">
-              <b>{pretty(s.skill)}</b>
-              <span className={STANDING_CHIP[s.state]}>{STANDING_LABEL[s.state]}</span>
-            </div>
+        {progress.skills.map((s) => {
+          const unmeasured = s.state === "unmeasured";
+          const summary = measuredSummary(s.mastery, s.confidence, s.attempts);
+          return (
+            <div className="standing" key={s.skill}>
+              <div className="spread">
+                <b>{pretty(s.skill)}</b>
+                <span className={STANDING_CHIP[s.state]}>{STANDING_LABEL[s.state]}</span>
+              </div>
 
-            <div className="bar" style={{ margin: "8px 0 6px" }}>
-              <span style={{ width: `${Math.max(2, Math.min(1, s.mastery) * 100)}%` }} />
-            </div>
+              <div className="bar" style={{ margin: "8px 0 6px" }}>
+                <span
+                  style={{
+                    width:
+                      s.mastery === null
+                        ? "0%"
+                        : `${Math.max(2, Math.min(1, s.mastery) * 100)}%`,
+                    opacity: unmeasured ? 0.35 : 1,
+                  }}
+                />
+              </div>
 
-            <p className="muted" style={{ margin: 0 }}>
-              {(s.mastery * 100).toFixed(0)}% estimated · {(s.confidence * 100).toFixed(0)}%
-              confidence ·{" "}
-              {s.attempts === 0
-                ? "not attempted yet"
-                : `${s.attempts} attempt${s.attempts === 1 ? "" : "s"}`}
-            </p>
-          </div>
-        ))}
+              <p className="muted" style={{ margin: 0 }}>
+                {summary === null
+                  ? notMeasuredLabel(s.not_measured_because)
+                  : summary}
+              </p>
+            </div>
+          );
+        })}
 
         {/* The prose here is the diagnoser's own wording -- "The student believes that
             Python function definitions require a return type..." -- written ABOUT a
