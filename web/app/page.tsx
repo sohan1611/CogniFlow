@@ -100,11 +100,16 @@ function EngineStatusBanner({ status }: { status: EngineStatus }) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
+    setNow(Date.now());
+    if (status.paused) return;
     const timer = window.setInterval(() => setNow(Date.now()), STATUS_TICK_MS);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [status.paused]);
 
-  if (status.state !== "waking" && status.state !== "offline") return null;
+  if (
+    status.state === "online" ||
+    (status.state === "checking" && !status.paused)
+  ) return null;
   const copy = engineCopy(status);
   const wakingSeconds = Math.max(
     0,
@@ -124,9 +129,13 @@ function EngineStatusBanner({ status }: { status: EngineStatus }) {
         <p className="engine-status-detail">{copy.detail}</p>
       </div>
       <p className="engine-status-meta">
-        {status.state === "waking"
-          ? `Trying for ${wakingSeconds} s · attempt ${status.attempts}`
-          : `Last checked ${checkedSeconds} s ago`}
+        {status.paused
+          ? "Paused while this tab is in the background — it resumes when you come back."
+          : status.state === "waking" && status.attempts > 0
+            ? `Trying for ${wakingSeconds} s · attempt ${status.attempts}`
+            : status.state === "waking"
+              ? "Getting ready to check the engine…"
+              : `Last checked ${checkedSeconds} s ago`}
       </p>
       <button
         type="button"

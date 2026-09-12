@@ -15,6 +15,7 @@ export type EngineStatus = {
   reportUnreachable: () => void;
   probeInFlight: boolean;
   wakeStartedAt: number | null;
+  paused: boolean;
 };
 
 type EngineSnapshot = Omit<EngineStatus, "retry" | "reportUnreachable">;
@@ -78,6 +79,7 @@ const INITIAL_SNAPSHOT: EngineSnapshot = {
   lastCheckedAt: null,
   probeInFlight: false,
   wakeStartedAt: null,
+  paused: false,
 };
 
 export function useEngineStatus(): EngineStatus {
@@ -91,6 +93,11 @@ export function useEngineStatus(): EngineStatus {
     let health: Health | null = null;
     let attempts = 0;
     let wakeStartedAt = Date.now();
+    let wakeElapsedMs = 0;
+    let visibleSince: number | null = document.hidden ? null : wakeStartedAt;
+    let paused = document.hidden;
+    let graceRemainingMs = CHECKING_GRACE_MS;
+    let graceStartedAt: number | null = null;
     let cycle = 0;
     let probeInFlight = false;
     let pendingImmediateProbe = false;
@@ -123,6 +130,40 @@ export function useEngineStatus(): EngineStatus {
       wakeDeadlineTimer = null;
     };
 
+    const visibleWakeElapsed = (now = Date.now()) =>
+      wakeElapsedMs + (visibleSince == null ? 0 : now - visibleSince);
+
+    const refreshWakeStartedAt = (now = Date.now()) => {
+      wakeStartedAt = now - visibleWakeElapsed(now);
+    };
+
+    const pauseGrace = (now: number) => {
+      if (graceStartedAt != null) {
+        graceRemainingMs = Math.max(0, graceRemainingMs - (now - graceStartedAt));
+        graceStartedAt = null;
+      }
+      clearGraceTimer();
+    };
+
+    const scheduleGrace = () => {
+      clearGraceTimer();
+      if (!mounted || document.hidden || state !== "checking") return;
+      if (graceRemainingMs <= 0) {
+        state = "waking";
+        update({ state });
+        return;
+      }
+      graceStartedAt = Date.now();
+      graceTimer = window.setTimeout(() => {
+        graceTimer = null;
+        graceStartedAt = null;
+        graceRemainingMs = 0;
+        if (!mounted || document.hidden || state !== "checking") return;
+        state = "waking";
+        update({ state });
+      }, graceRemainingMs);
+    };
+
     const scheduleProbe = (delay: number) => {
       clearScheduledProbe();
       if (!mounted || document.hidden || state === "online") return;
@@ -134,16 +175,23 @@ export function useEngineStatus(): EngineStatus {
 
     const scheduleWakeDeadline = () => {
       clearWakeDeadline();
+      if (!mounted || document.hidden || state === "online" || state === "offline") return;
       const deadlineCycle = cycle;
+      const remaining = Math.max(0, WAKE_WINDOW_MS - visibleWakeElapsed());
       wakeDeadlineTimer = window.setTimeout(() => {
         wakeDeadlineTimer = null;
-        if (!mounted || deadlineCycle !== cycle || state === "online") return;
+        if (
+          !mounted ||
+          document.hidden ||
+          deadlineCycle !== cycle ||
+          state === "online"
+        ) return;
         state = "offline";
         clearGraceTimer();
         clearScheduledProbe();
         update({ state });
         if (!probeInFlight) scheduleProbe(OFFLINE_INTERVAL_MS);
-      }, WAKE_WINDOW_MS);
+      }, remaining);
     };
 
     const probe = async () => {
@@ -206,7 +254,7 @@ export function useEngineStatus(): EngineStatus {
       }
 
       update({ lastCheckedAt: completedAt, probeInFlight: false });
-      if (state === "offline" || completedAt - wakeStartedAt >= WAKE_WINDOW_MS) {
+      if (state === "offline" || visibleWakeElapsed(completedAt) >= WAKE_WINDOW_MS) {
         state = "offline";
         clearGraceTimer();
         update({ state });
@@ -218,17 +266,25 @@ export function useEngineStatus(): EngineStatus {
 
     const restartWakeWindow = () => {
       cycle += 1;
-      wakeStartedAt = Date.now();
+      const now = Date.now();
+      wakeStartedAt = now;
+      wakeElapsedMs = 0;
+      visibleSince = document.hidden ? null : now;
+      paused = document.hidden;
       attempts = 0;
       state = "waking";
+      graceRemainingMs = 0;
+      graceStartedAt = null;
       clearScheduledProbe();
       clearGraceTimer();
       scheduleWakeDeadline();
-      update({ state, attempts, probeInFlight, wakeStartedAt });
+      update({ state, attempts, probeInFlight, wakeStartedAt, paused });
       if (probeInFlight) {
         pendingImmediateProbe = true;
         controller?.abort();
-      } else if (!document.hidden) {
+      } else if (document.hidden) {
+        pendingImmediateProbe = true;
+      } else {
         void probe();
       }
     };
@@ -240,25 +296,46 @@ export function useEngineStatus(): EngineStatus {
 
     const onVisibilityChange = () => {
       if (document.hidden) {
+        const now = Date.now();
+        if (visibleSince != null) {
+          wakeElapsedMs += now - visibleSince;
+          visibleSince = null;
+        }
+        refreshWakeStartedAt(now);
+        paused = true;
         clearScheduledProbe();
+        clearWakeDeadline();
+        pauseGrace(now);
+        update({ paused, wakeStartedAt });
         return;
       }
+
+      const now = Date.now();
+      paused = false;
+      visibleSince = now;
+      refreshWakeStartedAt(now);
+      update({ paused, wakeStartedAt });
+
       if (state !== "online") {
         clearScheduledProbe();
-        if (!probeInFlight) void probe();
+        scheduleWakeDeadline();
+        scheduleGrace();
+        if (!probeInFlight) {
+          pendingImmediateProbe = false;
+          void probe();
+        } else {
+          pendingImmediateProbe = true;
+        }
       }
     };
 
     document.addEventListener("visibilitychange", onVisibilityChange);
-    setSnapshot({ ...INITIAL_SNAPSHOT, wakeStartedAt });
-    scheduleWakeDeadline();
-    graceTimer = window.setTimeout(() => {
-      graceTimer = null;
-      if (!mounted || state !== "checking") return;
-      state = "waking";
-      update({ state });
-    }, CHECKING_GRACE_MS);
-    void probe();
+    setSnapshot({ ...INITIAL_SNAPSHOT, wakeStartedAt, paused });
+    if (!paused) {
+      scheduleWakeDeadline();
+      scheduleGrace();
+      void probe();
+    }
 
     return () => {
       mounted = false;
