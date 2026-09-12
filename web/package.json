@@ -7,15 +7,16 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.0",
     "@codemirror/lang-python": "6.2.1",
     "@codemirror/state": "6.7.4",
     "@codemirror/view": "6.43.11",
+    "@neondatabase/auth": "0.5.0-beta",
     "codemirror": "6.0.2",
-    "next": "15.5.25",
+    "next": "16.3.4",
     "react": "19.1.1",
     "react-dom": "19.1.1"
   },

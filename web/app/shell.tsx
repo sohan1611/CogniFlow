@@ -12,7 +12,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Health } from "@/lib/api";
+import { clearCachedJwt, type Health } from "@/lib/api";
+import { authClient } from "@/lib/auth/client";
+import { engineCopy, type EngineStatus } from "@/lib/engine";
 
 /** Kept in step with the .glass-sweep animation in globals.css. */
 const SWEEP_MS = 620;
@@ -68,37 +70,40 @@ export function useGlassSwap() {
 export function Shell({
   tab,
   onTab,
-  onChangeName,
   name,
-  health,
+  email,
+  hasLearner,
+  engine,
   children,
   sweeping,
 }: {
   tab: Tab;
   onTab: (t: Tab) => void;
-  onChangeName: () => void;
-  name: string | null;
-  health: Health | null;
+  name: string;
+  email: string;
+  hasLearner: boolean;
+  engine: EngineStatus;
   children: React.ReactNode;
   sweeping: boolean;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeChoice>("system");
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const headerTriggerRef = useRef<HTMLButtonElement>(null);
   const bottomTriggerRef = useRef<HTMLButtonElement>(null);
   const dotTriggerRef = useRef<HTMLButtonElement>(null);
   const lastTriggerRef = useRef<HTMLButtonElement | null>(null);
 
-  const initials = name
-    ? name
-        .split(/\s+/)
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((w) => w[0]?.toUpperCase())
-        .join("") || name[0]?.toUpperCase() || ""
-    : "";
-  const hasTemplateNotice = health?.generation === "deterministic-templates";
+  const initials =
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((word) => word[0]?.toUpperCase())
+      .join("") || name[0]?.toUpperCase() || "";
+  const hasTemplateNotice = engine.health?.generation === "deterministic-templates";
 
   const openMore = (trigger: HTMLButtonElement | null) => {
     lastTriggerRef.current = trigger;
@@ -149,9 +154,26 @@ export function Shell({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [closeMore, moreOpen]);
 
-  const changeName = () => {
-    closeMore();
-    onChangeName();
+  const signOut = async () => {
+    setSigningOut(true);
+    setSignOutError(null);
+    try {
+      const result = await authClient.signOut();
+      if (result.error) {
+        setSignOutError(
+          result.error.status === 0 || result.error.status >= 500
+            ? "We couldn't reach the sign-in service. Please try again."
+            : "Something went wrong. Please try again.",
+        );
+        return;
+      }
+      clearCachedJwt();
+      window.location.assign("/auth/sign-in");
+    } catch {
+      setSignOutError("We couldn't reach the sign-in service. Please try again.");
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   return (
@@ -191,10 +213,10 @@ export function Shell({
             {TABS.map((t) => (
               <button
                 key={t.id}
-                aria-current={tab === t.id ? "page" : undefined}
+                aria-current={hasLearner && tab === t.id ? "page" : undefined}
                 onClick={() => onTab(t.id)}
-                disabled={!name}
-                title={!name ? "Tell me your name first" : undefined}
+                disabled={!hasLearner}
+                title={!hasLearner ? "Start learning first" : undefined}
               >
                 {t.label}
               </button>
@@ -211,13 +233,11 @@ export function Shell({
             onClick={() => openMore(headerTriggerRef.current)}
           >
             <span className="avatar" aria-hidden>
-              {name ? initials : "👤"}
+              {initials}
             </span>
             <span className="who-text">
-              <b>{name ?? "No learner yet"}</b>
-              {/* No email: there are no accounts, and inventing one on screen would be
-                  the first dishonest pixel in the product. */}
-              <small>{name ? "learner" : "enter a name to begin"}</small>
+              <b>{name}</b>
+              <small>learner</small>
             </span>
           </button>
         </header>
@@ -232,10 +252,10 @@ export function Shell({
           <button
             key={t.id}
             type="button"
-            aria-current={tab === t.id ? "page" : undefined}
+            aria-current={hasLearner && tab === t.id ? "page" : undefined}
             onClick={() => onTab(t.id)}
-            disabled={!name}
-            title={!name ? "Tell me your name first" : undefined}
+            disabled={!hasLearner}
+            title={!hasLearner ? "Start learning first" : undefined}
           >
             <span aria-hidden>{t.icon}</span>
             {t.mobileLabel}
@@ -258,13 +278,18 @@ export function Shell({
         <MoreSheet
           dialogRef={dialogRef}
           name={name}
+          email={email}
           initials={initials}
-          health={health}
+          hasLearner={hasLearner}
+          engine={engine}
           theme={theme}
           onClose={closeMore}
-          onChangeName={changeName}
+          onSignOut={signOut}
+          signingOut={signingOut}
+          signOutError={signOutError}
           onTheme={applyTheme}
           onOpenDetail={() => {
+            if (!hasLearner) return;
             closeMore();
             onTab("detail");
           }}
@@ -277,36 +302,36 @@ export function Shell({
 function MoreSheet({
   dialogRef,
   name,
+  email,
   initials,
-  health,
+  hasLearner,
+  engine,
   theme,
   onClose,
-  onChangeName,
+  onSignOut,
+  signingOut,
+  signOutError,
   onTheme,
   onOpenDetail,
 }: {
   dialogRef: React.RefObject<HTMLDivElement | null>;
-  name: string | null;
+  name: string;
+  email: string;
   initials: string;
-  health: Health | null;
+  hasLearner: boolean;
+  engine: EngineStatus;
   theme: ThemeChoice;
   onClose: () => void;
-  onChangeName: () => void;
+  onSignOut: () => void;
+  signingOut: boolean;
+  signOutError: string | null;
   onTheme: (theme: ThemeChoice) => void;
   onOpenDetail: () => void;
 }) {
-  const providersPresent = (health?.providers.length ?? 0) > 0;
-  const generationText = !health
-    ? "Checking engine status"
-    : providersPresent
-      ? "Live model generation"
-      : "Built-in templates. Every tutoring decision is still computed exactly as it would be live; only the exercise wording is templated.";
+  const health = engine.health;
+  const copy = engineCopy(engine);
   const languageLabels = (health?.languages ?? []).map((option) => option.label);
-  const runsText = !health
-    ? "Checking engine status"
-    : languageLabels.length > 0
-      ? languageLabels.join(", ")
-      : "Not reported";
+  const runsText = languageLabels.length > 0 ? languageLabels.join(", ") : "Not reported";
   const corpus =
     health && typeof (health as HealthWithCorpus).corpus === "string"
       ? String((health as HealthWithCorpus).corpus)
@@ -332,19 +357,25 @@ function MoreSheet({
         <section className="more-section">
           <div className="who-row">
             <span className="avatar" aria-hidden>
-              {name ? initials : "👤"}
+              {initials}
             </span>
             <div>
-              <h3>{name ?? "No learner yet"}</h3>
-              <p className="muted">learner</p>
+              <h3>{name}</h3>
+              <p className="muted">{email}</p>
             </div>
           </div>
         </section>
 
         <section className="more-section">
-          <button type="button" className="sheet-action" onClick={onChangeName}>
-            Change name
+          <button
+            type="button"
+            className="sheet-action"
+            onClick={onSignOut}
+            disabled={signingOut}
+          >
+            {signingOut ? "Signing out…" : "Sign out"}
           </button>
+          {signOutError && <p className="err sheet-availability" role="alert">{signOutError}</p>}
         </section>
 
         <section className="more-section">
@@ -370,16 +401,34 @@ function MoreSheet({
             Every decision the tutor made this session, and the notes it wrote while
             diagnosing your work.
           </p>
-          <button type="button" className="sheet-action" onClick={onOpenDetail}>
+          <button
+            type="button"
+            className="sheet-action"
+            onClick={onOpenDetail}
+            disabled={!hasLearner}
+            title={!hasLearner ? "Start learning first" : undefined}
+          >
             Open session detail
           </button>
+          {!hasLearner && <p className="muted sheet-availability">Available once you&apos;ve started.</p>}
         </section>
 
         <section className="more-section">
           <h3>Engine status</h3>
-          <p className="muted">{generationText}</p>
-          <p className="muted">Runs: {runsText}</p>
+          <p className="muted engine-copy-title">{copy.title}</p>
+          <p className="muted engine-copy-detail">{copy.detail}</p>
+          {engine.state === "online" && <p className="muted">Runs: {runsText}</p>}
           {corpus && corpus !== "ready" && <p className="muted">Corpus: {corpus}</p>}
+          {engine.state === "offline" && (
+            <button
+              type="button"
+              className="btn engine-retry"
+              onClick={engine.retry}
+              disabled={engine.probeInFlight}
+            >
+              {engine.probeInFlight ? "Checking…" : "Try again now"}
+            </button>
+          )}
         </section>
       </div>
     </div>

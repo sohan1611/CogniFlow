@@ -3,7 +3,7 @@
 /**
  * The student experience, as a small state machine behind glass.
  *
- *   name -> diagnostic -> plan <-> learn <-> progress
+ *   welcome -> diagnostic -> plan <-> learn <-> progress
  *
  * Transitions are driven by what the engine returns. This component knows how to draw a
  * problem; it does not know how a problem is chosen, and it must not learn.
@@ -15,7 +15,6 @@ import {
   api,
   type Activity,
   type DiagnosticStep,
-  type Health,
   type LanguageOption,
   type Plan,
   type Progress,
@@ -23,12 +22,24 @@ import {
   type TutorView,
   type PlanSkill,
 } from "@/lib/api";
+import { engineCopy, useEngineStatus, type EngineStatus } from "@/lib/engine";
 import { StudentDashboard } from "./dashboard";
 import { CodeEditor } from "./editor";
 import { ActivityPanel, LearningPlan, pretty, skillBlurb } from "./plan";
 import { Shell, type Tab, useGlassSwap } from "./shell";
+import { authClient } from "@/lib/auth/client";
 
-type Stage = "name" | "diagnostic" | "app";
+type Stage = "welcome" | "diagnostic" | "app";
+
+type VisibleError = {
+  message: string;
+  kind: "network" | "http" | "timeout" | "unexpected";
+};
+
+type SlowTutorAction = "begin" | "submit";
+
+const RESTART_NOTE =
+  "The tutor restarted while you were away, so that exercise was closed. Your progress is saved — pick up where you left off.";
 
 function startOfLocalDay(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -79,12 +90,68 @@ function useDayPart() {
   return part;
 }
 
-function planAttemptTotal(plan: Plan) {
-  return plan.skills.reduce((total, skill) => total + skill.attempts, 0);
+// The visible elapsed-time copy needs no finer cadence than seconds, and a one-second
+// tick avoids spending renders on imperceptible sub-second changes.
+const STATUS_TICK_MS = 1_000;
+
+function EngineStatusBanner({ status }: { status: EngineStatus }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), STATUS_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  if (status.state !== "waking" && status.state !== "offline") return null;
+  const copy = engineCopy(status);
+  const wakingSeconds = Math.max(
+    0,
+    Math.floor((now - (status.wakeStartedAt ?? now)) / STATUS_TICK_MS),
+  );
+  const checkedSeconds = Math.max(
+    0,
+    Math.floor((now - (status.lastCheckedAt ?? now)) / STATUS_TICK_MS),
+  );
+
+  return (
+    <div
+      className={`note engine-status-note${status.state === "offline" ? " warn" : ""}`}
+    >
+      <div className="engine-status-live" role="status" aria-live="polite">
+        <strong>{copy.title}</strong>
+        <p className="engine-status-detail">{copy.detail}</p>
+      </div>
+      <p className="engine-status-meta">
+        {status.state === "waking"
+          ? `Trying for ${wakingSeconds} s · attempt ${status.attempts}`
+          : `Last checked ${checkedSeconds} s ago`}
+      </p>
+      <button
+        type="button"
+        className="btn engine-retry"
+        onClick={status.retry}
+        disabled={status.probeInFlight}
+      >
+        {status.probeInFlight ? "Checking…" : "Try again now"}
+      </button>
+      {status.state === "offline" && (
+        <p className="engine-status-help">
+          Nothing you&apos;ve done is lost. If this lasts more than a few minutes, please
+          come back later.
+        </p>
+      )}
+    </div>
+  );
 }
 
-function visibleAttemptTotal(plan: Plan, progress: Progress | null, activity: Activity | null) {
-  return progress?.total_attempts ?? activity?.total ?? planAttemptTotal(plan);
+function visibleAttemptTotal(plan: Plan, progress: Progress | null) {
+  return typeof plan.total_attempts === "number"
+    ? plan.total_attempts
+    : progress?.total_attempts ?? null;
+}
+
+function isMissingSession(error: unknown) {
+  return error instanceof ApiError && error.status === 404;
 }
 
 function dashboardFocus(plan: Plan, activeSkill: string | null) {
@@ -94,16 +161,18 @@ function dashboardFocus(plan: Plan, activeSkill: string | null) {
 }
 
 export default function Page() {
-  const [stage, setStage] = useState<Stage>("name");
+  const [stage, setStage] = useState<Stage>("welcome");
   const [tab, setTab] = useState<Tab>("plan");
-  const [name, setName] = useState("");
   const [language, setLanguage] = useState("");
   const [id, setId] = useState("");
-  const [health, setHealth] = useState<Health | null>(null);
-  const [reachable, setReachable] = useState<boolean | null>(null);
-  const [waking, setWaking] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [loadingTab, setLoadingTab] = useState<Tab | null>(null);
+  const [beginningSkill, setBeginningSkill] = useState<string | null>(null);
+  const [slowTutorAction, setSlowTutorAction] = useState<SlowTutorAction | null>(null);
+  const [restartNote, setRestartNote] = useState<string | null>(null);
+  const [error, setError] = useState<VisibleError | null>(null);
 
   const [step, setStep] = useState<DiagnosticStep | null>(null);
   const [plan, setPlan] = useState<Plan | null>(null);
@@ -115,8 +184,18 @@ export default function Page() {
   const [shown, setShown] = useState(0);
 
   const { swap, sweeping } = useGlassSwap();
+  const { data: accountSession, isPending: accountPending } = authClient.useSession();
+  const engine = useEngineStatus();
+  const health = engine.health;
+  const statusCopy = engineCopy(engine);
+  const previousEngineState = useRef(engine.state);
   const languageOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const navigationId = useRef(0);
+  const recoveredDraft = useRef<{ skill: string; code: string } | null>(null);
   const languageOptions = health?.languages ?? [];
+  const accountEmail = accountSession?.user.email ?? "";
+  const displayName =
+    accountSession?.user.name?.trim() || accountEmail.split("@")[0] || "Learner";
   const hasLanguagePicker = languageOptions.length > 1;
   const selectedLanguage =
     hasLanguagePicker && languageOptions.some((option) => option.value === language)
@@ -124,46 +203,7 @@ export default function Page() {
       : hasLanguagePicker
         ? languageOptions[0]?.value ?? ""
         : "";
-
-  useEffect(() => {
-    // Checked once, up front. A student clicking Start and getting a raw fetch error is
-    // told nothing they can act on; a deployment whose engine is unset or asleep should
-    // say which, before they have typed anything.
-    //
-    // The retries are not defensive padding. The engine runs on a free tier that
-    // suspends itself after fifteen idle minutes and answers the first request with a
-    // 502 while it boots, so a single probe would report a perfectly healthy service as
-    // dead to whoever happens to arrive first -- which, for a link sent to judges, is
-    // exactly who arrives first.
-    let cancelled = false;
-    const slow = window.setTimeout(() => {
-      if (!cancelled) setWaking(true);
-    }, 2500);
-
-    const probe = (attemptsLeft: number): void => {
-      api
-        .health()
-        .then((h) => {
-          if (cancelled) return;
-          setHealth(h);
-          setReachable(true);
-        })
-        .catch(() => {
-          if (cancelled) return;
-          if (attemptsLeft > 0) {
-            window.setTimeout(() => probe(attemptsLeft - 1), 5000);
-            return;
-          }
-          setReachable(false);
-        });
-    };
-    probe(12);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(slow);
-    };
-  }, []);
+  const canStart = !starting && !accountPending && engine.state === "online";
 
   useEffect(() => {
     const options = health?.languages ?? [];
@@ -177,17 +217,50 @@ export default function Page() {
     }
   }, [health, language]);
 
-  const guard = useCallback(async (work: () => Promise<void>) => {
-    setBusy(true);
+  useEffect(() => {
+    const recovered = previousEngineState.current !== "online" && engine.state === "online";
+    previousEngineState.current = engine.state;
+    if (recovered) {
+      setError((current) => current?.kind === "network" ? null : current);
+    }
+  }, [engine.state]);
+
+  useEffect(() => {
+    const nextAction: SlowTutorAction | null = beginningSkill
+      ? "begin"
+      : submitting
+        ? "submit"
+        : null;
+    setSlowTutorAction(null);
+    if (!nextAction) return;
+    const timer = window.setTimeout(() => setSlowTutorAction(nextAction), 3_000);
+    return () => window.clearTimeout(timer);
+  }, [beginningSkill, submitting]);
+
+  const presentError = useCallback((err: unknown) => {
+    if (err instanceof ApiError) {
+      if (err.kind === "network") engine.reportUnreachable();
+      setError({ message: err.message, kind: err.kind });
+      return;
+    }
+    console.warn("Unexpected tutoring interface error", err);
+    setError({ message: "Something went wrong. Please try again.", kind: "unexpected" });
+  }, [engine.reportUnreachable]);
+
+  const guard = useCallback(async (
+    work: () => Promise<void>,
+    setInFlight: (value: boolean) => void,
+  ) => {
+    setInFlight(true);
     setError(null);
     try {
       await work();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
+      presentError(err);
     } finally {
-      setBusy(false);
+      setInFlight(false);
     }
-  }, []);
+  }, [presentError]);
 
   const moveLanguageSelection = (nextIndex: number) => {
     const option = languageOptions[nextIndex];
@@ -213,29 +286,81 @@ export default function Page() {
   };
 
   // -------------------------------------------------------------- actions
+  const applyDiagnosticStep = (next: DiagnosticStep) => {
+    setStep(next);
+    setCode(next.complete ? "" : next.starter_code);
+  };
+
+  const reopenSession = async () => {
+    const session = await api.startSession(displayName, selectedLanguage || undefined);
+    setId(session.student_id);
+    return session;
+  };
+
+  const recoverDiagnostic = async () => {
+    const session = await reopenSession();
+    const next = await api.diagnosticQuestion(session.student_id);
+    applyDiagnosticStep(next);
+  };
+
+  const recoverExercise = async (skill: string | null, expectedNavigationId: number) => {
+    if (skill) recoveredDraft.current = { skill, code };
+    const session = await reopenSession();
+    setView(null);
+    setHints([]);
+    setShown(0);
+    setRestartNote(RESTART_NOTE);
+
+    // A tab click made while the session was being reopened remains authoritative.
+    if (navigationId.current !== expectedNavigationId) return;
+    const recoveryNavigationId = ++navigationId.current;
+    setLoadingTab("plan");
+    swap(() => {
+      setStage("app");
+      setTab("plan");
+    });
+    try {
+      const nextPlan = await api.plan(session.student_id);
+      if (navigationId.current === recoveryNavigationId) setPlan(nextPlan);
+    } catch (recoveryError) {
+      if (navigationId.current === recoveryNavigationId) throw recoveryError;
+    } finally {
+      if (navigationId.current === recoveryNavigationId) setLoadingTab(null);
+    }
+  };
+
   const begin = () =>
     guard(async () => {
-      const session = await api.startSession(name, selectedLanguage || undefined);
+      const session = await api.startSession(displayName, selectedLanguage || undefined);
       setId(session.student_id);
       if (session.needs_diagnostic) {
-        const first = await api.diagnosticQuestion(session.student_id);
-        setStep(first);
-        setCode(first.complete ? "" : first.starter_code);
+        let first: DiagnosticStep;
+        try {
+          first = await api.diagnosticQuestion(session.student_id);
+        } catch (requestError) {
+          if (!isMissingSession(requestError)) throw requestError;
+          const reopened = await reopenSession();
+          first = await api.diagnosticQuestion(reopened.student_id);
+        }
+        applyDiagnosticStep(first);
         swap(() => setStage("diagnostic"));
       } else {
         setPlan(await api.plan(session.student_id));
         swap(() => setStage("app"));
       }
-    });
+    }, setStarting);
 
   const answer = (submitted: string) =>
     guard(async () => {
       if (!step || step.complete) return;
-      await api.answerDiagnostic(id, step.skill, submitted);
-      const next = await api.diagnosticQuestion(id);
-      setStep(next);
-      setCode(next.complete ? "" : next.starter_code);
-    });
+      try {
+        await api.answerDiagnostic(id, step.skill, submitted);
+        applyDiagnosticStep(await api.diagnosticQuestion(id));
+      } catch (requestError) {
+        if (!isMissingSession(requestError)) throw requestError;
+        await recoverDiagnostic();
+      }
+    }, setActionBusy);
 
   const enterApp = () =>
     guard(async () => {
@@ -244,70 +369,103 @@ export default function Page() {
         setStage("app");
         setTab("plan");
       });
-    });
+    }, setActionBusy);
 
-  const startSkill = (skill: string) =>
-    guard(async () => {
-      const next = await api.beginTutoring(id, name, skill);
-      setView(next);
-      setCode(next.problem?.starter_code ?? "");
-      setHints([]);
-      setShown(0);
-      swap(() => setTab("learn"));
-    });
+  const startSkill = (skill: string) => {
+    const actionNavigationId = ++navigationId.current;
+    setLoadingTab(null);
+    setBeginningSkill(skill);
+    swap(() => setTab("learn"));
+    return guard(async () => {
+      try {
+        const next = await api.beginTutoring(id, displayName, skill);
+        const draft = recoveredDraft.current;
+        const restoresDraft = Boolean(draft && draft.skill === next.target_skill);
+        setView(next);
+        setCode(restoresDraft && draft ? draft.code : next.problem?.starter_code ?? "");
+        if (restoresDraft) recoveredDraft.current = null;
+        setHints([]);
+        setShown(0);
+        setRestartNote(null);
+      } catch (requestError) {
+        if (!isMissingSession(requestError)) throw requestError;
+        await recoverExercise(view?.target_skill ?? null, actionNavigationId);
+      } finally {
+        setBeginningSkill(null);
+      }
+    }, setActionBusy);
+  };
 
-  const submit = () =>
-    guard(async () => {
-      const next = await api.submit(id, code);
+  const submit = () => {
+    const actionNavigationId = navigationId.current;
+    return guard(async () => {
+      let next: TutorView;
+      try {
+        next = await api.submit(id, code);
+      } catch (requestError) {
+        if (!isMissingSession(requestError)) throw requestError;
+        await recoverExercise(view?.target_skill ?? null, actionNavigationId);
+        return;
+      }
       setView(next);
       setCode(next.problem?.starter_code ?? "");
       setHints([]);
       setShown(0);
       setPlan(await api.plan(id)); // mastery moved, so the plan did too
-    });
+    }, setSubmitting);
+  };
 
-  const askForHint = () =>
-    guard(async () => {
-      const ladder = hints.length ? hints : (await api.hints(id, code)).hints;
-      setHints(ladder);
-      setShown((n) => Math.min(n + 1, ladder.length));
-    });
-
-  const changeTab = (next: Tab) =>
-    guard(async () => {
-      if (next === "plan") setPlan(await api.plan(id));
-      // The detail view reads the diagnoses off the student profile, so it needs the
-      // same fetch Progress does -- otherwise it shows whatever was cached from a
-      // Progress visit that may never have happened.
-      if (next === "detail") setProgress(await api.progress(id));
-      if (next === "progress") {
-        const [nextProgress, nextActivity] = await Promise.all([
-          api.progress(id),
-          api.activity(id),
-        ]);
-        setProgress(nextProgress);
-        setActivity(nextActivity);
+  const askForHint = () => {
+    const actionNavigationId = navigationId.current;
+    return guard(async () => {
+      try {
+        const ladder = hints.length ? hints : (await api.hints(id, code)).hints;
+        setHints(ladder);
+        setShown((n) => Math.min(n + 1, ladder.length));
+      } catch (requestError) {
+        if (!isMissingSession(requestError)) throw requestError;
+        await recoverExercise(view?.target_skill ?? null, actionNavigationId);
       }
-      swap(() => setTab(next));
-    });
+    }, setActionBusy);
+  };
 
-  const changeName = () => {
-    swap(() => {
-      setStage("name");
-      setTab("plan");
-      setName("");
-      setLanguage("");
-      setId("");
-      setView(null);
-      setPlan(null);
-      setProgress(null);
-      setActivity(null);
-      setStep(null);
-      setHints([]);
-      setShown(0);
-      setCode("");
-      setError(null);
-    });
+  const changeTab = (next: Tab) => {
+    if (!id) return;
+    const requestId = ++navigationId.current;
+    setError(null);
+    setLoadingTab(next === "learn" ? null : next);
+    swap(() => setTab(next));
+
+    if (next === "learn") return;
+    void (async () => {
+      try {
+        if (next === "plan") {
+          const nextPlan = await api.plan(id);
+          if (navigationId.current === requestId) setPlan(nextPlan);
+        }
+        // The detail view reads the diagnoses off the student profile, so it needs the
+        // same fetch Progress does -- otherwise it shows whatever was cached from a
+        // Progress visit that may never have happened.
+        if (next === "detail") {
+          const nextProgress = await api.progress(id);
+          if (navigationId.current === requestId) setProgress(nextProgress);
+        }
+        if (next === "progress") {
+          const [nextProgress, nextActivity] = await Promise.all([
+            api.progress(id),
+            api.activity(id),
+          ]);
+          if (navigationId.current === requestId) {
+            setProgress(nextProgress);
+            setActivity(nextActivity);
+          }
+        }
+      } catch (requestError) {
+        if (navigationId.current === requestId) presentError(requestError);
+      } finally {
+        if (navigationId.current === requestId) setLoadingTab(null);
+      }
+    })();
   };
 
   // -------------------------------------------------------------- render
@@ -315,38 +473,25 @@ export default function Page() {
     <Shell
       tab={tab}
       onTab={changeTab}
-      onChangeName={changeName}
-      name={stage === "name" ? null : name}
-      health={health}
+      name={displayName}
+      email={accountEmail}
+      hasLearner={stage !== "welcome"}
+      engine={engine}
       sweeping={sweeping}
     >
-      {reachable === null && waking && (
-        <div className="note">
-          <strong>Waking the tutoring engine</strong>
-          It sleeps when nobody is using it and takes up to a minute to come back. This
-          page will start on its own once it answers.
-        </div>
+      {(engine.state === "waking" || engine.state === "offline") && (
+        <EngineStatusBanner status={engine} />
       )}
 
-      {reachable === false && (
-        <div className="note warn">
-          <strong>The tutoring engine is not reachable</strong>
-          This page is only the surface — the tutor itself runs as a separate service.
-          Nothing below will work until it is running and{" "}
-          <code>NEXT_PUBLIC_API_URL</code> points at it.
-        </div>
-      )}
-
-      {health && health.generation !== "live" && (
+      {engine.state === "online" && health?.generation !== "live" && (
         <div className="note warn templates-banner">
           <strong>Running on built-in templates</strong>
-          No model provider is configured, so exercise wording is templated. Every
-          tutoring decision below is still computed exactly as it would be live.
+          {statusCopy.detail}
         </div>
       )}
-      {error && <p className="err">{error}</p>}
+      {error && <p className="err">{error.message}</p>}
 
-      {stage === "name" && (
+      {stage === "welcome" && (
         <div className="hero">
           <div className="hero-pill">AI Tutor</div>
           <h1>
@@ -367,22 +512,8 @@ export default function Page() {
           </div>
 
           <div className="name-block">
-            <label htmlFor="nm">What should I call you?</label>
-            <p className="muted">We&apos;ll use your name to remember what you know between visits.</p>
-            <div className="name-field">
-              <span aria-hidden>👤</span>
-              <input
-                id="nm"
-                type="text"
-                value={name}
-                placeholder="Enter your name"
-                inputMode="text"
-                autoComplete="given-name"
-                enterKeyHint="go"
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && name.trim() && begin()}
-              />
-            </div>
+            <p className="welcome-account">Signed in as <strong>{displayName}</strong></p>
+            <p className="muted">{accountEmail}</p>
             {hasLanguagePicker && (
               <div className="language-picker">
                 <p id="language-picker-label" className="language-label">Which language?</p>
@@ -409,37 +540,31 @@ export default function Page() {
             <button
               className="btn hero-cta"
               onClick={begin}
-              disabled={busy || !name.trim() || reachable !== true}
+              disabled={!canStart}
             >
-              {busy
-                ? "Starting…"
-                : reachable === false
-                  ? "Engine offline"
-                  : reachable === null
-                    ? "Waking the engine…"
-                    : "Start Learning"}
+              {starting ? "Starting…" : statusCopy.startLabel}
             </button>
           </div>
 
           <div className="feature-grid">
             <article className="feature">
               <span aria-hidden>◎</span>
-              <h3>Personalized</h3>
+              <h2 className="feature-title">Personalized</h2>
               <p className="muted">Adapts to your strengths and gaps</p>
             </article>
             <article className="feature">
               <span aria-hidden>✎</span>
-              <h3>Practice</h3>
+              <h2 className="feature-title">Practice</h2>
               <p className="muted">Real code, run against real tests</p>
             </article>
             <article className="feature">
               <span aria-hidden>◷</span>
-              <h3>Progress</h3>
+              <h2 className="feature-title">Progress</h2>
               <p className="muted">Track what you have actually shown</p>
             </article>
             <article className="feature">
               <span aria-hidden>✦</span>
-              <h3>AI Tutor</h3>
+              <h2 className="feature-title">AI Tutor</h2>
               <p className="muted">Guidance the moment you are stuck</p>
             </article>
           </div>
@@ -456,7 +581,7 @@ export default function Page() {
           </p>
           <div className="card" style={{ marginTop: 18 }}>
             <div className="top">
-              <h3>{pretty(step.skill)}</h3>
+              <h2 className="exercise-title">{pretty(step.skill)}</h2>
               <span className="chip">Question {step.answered + 1}</span>
             </div>
             <p className="desc" style={{ whiteSpace: "pre-wrap" }}>{step.prompt}</p>
@@ -466,10 +591,10 @@ export default function Page() {
               ariaLabel="Diagnostic answer"
             />
             <div className="row" style={{ marginTop: 12 }}>
-              <button className="btn" onClick={() => answer(code)} disabled={busy}>
-                {busy ? "Checking…" : "Submit"}
+              <button className="btn" onClick={() => answer(code)} disabled={actionBusy}>
+                {actionBusy ? "Checking…" : "Submit"}
               </button>
-              <button className="btn ghost" onClick={() => answer("")} disabled={busy}>
+              <button className="btn ghost" onClick={() => answer("")} disabled={actionBusy}>
                 I don&apos;t know this one
               </button>
             </div>
@@ -493,51 +618,122 @@ export default function Page() {
             <p className="muted">
               Confidence in this picture: {(step.confidence * 100).toFixed(0)}%
             </p>
-            <button className="btn" onClick={enterApp} disabled={busy} style={{ marginTop: 10 }}>
+            <button className="btn" onClick={enterApp} disabled={actionBusy} style={{ marginTop: 10 }}>
               See my plan
             </button>
           </div>
         </div>
       )}
 
-      {stage === "app" && tab === "plan" && plan && (
-        <PlanDashboard
-          plan={plan}
-          activeSkill={view?.awaiting_student ? view.target_skill : null}
-          view={view}
-          progress={progress}
-          activity={activity}
-          name={name}
-          onStart={startSkill}
-          onHint={askForHint}
-          hints={hints.slice(0, shown)}
-          exhausted={shown > 0 && shown >= hints.length}
-          busy={busy}
-        />
+      {stage === "app" && tab === "plan" && (
+        <div className="view-region" aria-busy={loadingTab === "plan"}>
+          {loadingTab === "plan" && plan && (
+            <p className="view-updating" role="status">Updating…</p>
+          )}
+          {restartNote && <div className="note info restart-note" role="status">{restartNote}</div>}
+          {plan ? (
+            <PlanDashboard
+              plan={plan}
+              activeSkill={view?.awaiting_student ? view.target_skill : null}
+              view={view}
+              progress={progress}
+              activity={activity}
+              name={displayName}
+              onStart={startSkill}
+              onHint={askForHint}
+              hints={hints.slice(0, shown)}
+              exhausted={shown > 0 && shown >= hints.length}
+              busy={actionBusy || loadingTab === "plan"}
+            />
+          ) : loadingTab === "plan" ? (
+            <LoadingView message="Loading your plan…" />
+          ) : (
+            <UnavailableView name="plan" />
+          )}
+        </div>
       )}
 
       {stage === "app" && tab === "learn" && (
-        <Learn
-          view={view}
-          code={code}
-          setCode={setCode}
-          onSubmit={submit}
-          onHint={askForHint}
-          hints={hints.slice(0, shown)}
-          exhausted={shown > 0 && shown >= hints.length}
-          busy={busy}
-          languages={languageOptions}
-        />
+        <div
+          className="view-region"
+          aria-busy={beginningSkill !== null || submitting}
+        >
+          {beginningSkill ? (
+            <>
+              {slowTutorAction === "begin" && (
+                <p className="tutor-progress-note" role="status">
+                  Writing your next exercise — this can take up to a minute.
+                </p>
+              )}
+              <LoadingView message="Loading your exercise…" />
+            </>
+          ) : (
+            <Learn
+              view={view}
+              code={code}
+              setCode={setCode}
+              onSubmit={submit}
+              onHint={askForHint}
+              hints={hints.slice(0, shown)}
+              exhausted={shown > 0 && shown >= hints.length}
+              submitting={submitting}
+              hintBusy={actionBusy}
+              showSubmitProgress={slowTutorAction === "submit"}
+              languages={languageOptions}
+            />
+          )}
+        </div>
       )}
 
       {stage === "app" && tab === "detail" && (
-        <DetailView events={view?.events ?? []} progress={progress} />
+        <div className="view-region" aria-busy={loadingTab === "detail"}>
+          {loadingTab === "detail" && progress && (
+            <p className="view-updating" role="status">Updating…</p>
+          )}
+          {progress ? (
+            <DetailView events={view?.events ?? []} progress={progress} />
+          ) : loadingTab === "detail" ? (
+            <LoadingView message="Loading session detail…" />
+          ) : (
+            <UnavailableView name="session detail" />
+          )}
+        </div>
       )}
 
-      {stage === "app" && tab === "progress" && progress && activity && (
-        <ProgressView progress={progress} activity={activity} />
+      {stage === "app" && tab === "progress" && (
+        <div className="view-region" aria-busy={loadingTab === "progress"}>
+          {loadingTab === "progress" && progress && activity && (
+            <p className="view-updating" role="status">Updating…</p>
+          )}
+          {progress && activity ? (
+            <ProgressView progress={progress} activity={activity} />
+          ) : loadingTab === "progress" ? (
+            <LoadingView message="Loading your progress…" />
+          ) : (
+            <UnavailableView name="progress" />
+          )}
+        </div>
       )}
     </Shell>
+  );
+}
+
+function LoadingView({ message }: { message: string }) {
+  return (
+    <div className="view-loading" role="status">
+      <span className="view-loading-mark" aria-hidden />
+      <h1>{message}</h1>
+      <p className="sub">One moment while the latest information arrives.</p>
+    </div>
+  );
+}
+
+function UnavailableView({ name }: { name: string }) {
+  return (
+    <div className="view-loading">
+      <h1>Couldn&apos;t load {name}</h1>
+      <p className="sub">Choose this section again to retry.</p>
+    </div>
   );
 }
 
@@ -636,14 +832,18 @@ function GreetingBlock({
   busy: boolean;
 }) {
   const part = useDayPart();
-  const attempts = visibleAttemptTotal(plan, progress, activity);
+  const attempts = visibleAttemptTotal(plan, progress);
   const streak = currentActivityStreak(activity);
   const summary =
     attempts === 0
       ? "Nothing recorded yet — your first exercise will start the streak."
-      : streak == null
-        ? `${attempts} attempt${attempts === 1 ? "" : "s"} · ${plan.counts.done} of ${plan.counts.total} confirmed`
-        : `${streak}-day streak · ${attempts} attempt${attempts === 1 ? "" : "s"} · ${plan.counts.done} of ${plan.counts.total} confirmed`;
+      : [
+          streak == null ? null : `${streak}-day streak`,
+          attempts == null
+            ? null
+            : `${attempts} attempt${attempts === 1 ? "" : "s"}`,
+          `${plan.counts.done} of ${plan.counts.total} confirmed`,
+        ].filter(Boolean).join(" · ");
 
   return (
     <div className="greeting-block">
@@ -681,7 +881,7 @@ function StatRow({
   view: TutorView | null;
   focus: PlanSkill | null;
 }) {
-  const attempts = visibleAttemptTotal(plan, progress, activity);
+  const attempts = visibleAttemptTotal(plan, progress);
   const streak = currentActivityStreak(activity);
   const nextUp = plan.suggested_next
     ? plan.skills.find((skill) => skill.skill === plan.suggested_next) ?? null
@@ -707,11 +907,13 @@ function StatRow({
       </div>
       <div className="stat academic-stat">
         <span>ATTEMPTS</span>
-        <b>{attempts}</b>
+        <b>{attempts ?? "—"}</b>
         <small>
-          {streak == null
-            ? `${attempts} attempt${attempts === 1 ? "" : "s"} recorded`
-            : `${streak}-day streak`}
+          {streak != null
+            ? `${streak}-day streak`
+            : attempts == null
+              ? "Open Progress to load the total"
+              : `${attempts} attempt${attempts === 1 ? "" : "s"} recorded`}
         </small>
       </div>
       <div className="stat academic-stat">
@@ -879,7 +1081,9 @@ function Learn({
   onHint,
   hints,
   exhausted,
-  busy,
+  submitting,
+  hintBusy,
+  showSubmitProgress,
   languages,
 }: {
   view: TutorView | null;
@@ -889,7 +1093,9 @@ function Learn({
   onHint: () => void;
   hints: string[];
   exhausted: boolean;
-  busy: boolean;
+  submitting: boolean;
+  hintBusy: boolean;
+  showSubmitProgress: boolean;
   languages: LanguageOption[];
 }) {
   if (!view) {
@@ -909,6 +1115,7 @@ function Learn({
     runningLanguage && defaultLanguageValue && runningLanguage.value !== defaultLanguageValue
       ? runningLanguage.label
       : null;
+  const controlsBusy = submitting || hintBusy;
   return (
     <div className="columns">
       <section>
@@ -966,7 +1173,7 @@ function Learn({
         {view.problem && view.awaiting_student ? (
           <div className="card">
             <div className="top">
-              <h3>{view.problem.title}</h3>
+              <h1 className="exercise-title">{view.problem.title}</h1>
               <div className="chip-row">
                 <span className="chip">{view.difficulty}</span>
                 {languageChipLabel && <span className="chip">{languageChipLabel}</span>}
@@ -984,13 +1191,18 @@ function Learn({
               ariaLabel="Exercise answer"
             />
             <div className="row" style={{ marginTop: 12 }}>
-              <button className="btn" onClick={onSubmit} disabled={busy}>
-                {busy ? "Running…" : "Submit"}
+              <button className="btn" onClick={onSubmit} disabled={controlsBusy}>
+                {submitting ? "Running…" : "Submit"}
               </button>
-              <button className="btn ghost" onClick={onHint} disabled={busy || exhausted}>
+              <button className="btn ghost" onClick={onHint} disabled={controlsBusy || exhausted}>
                 {exhausted ? "No more hints" : "I'm stuck — give me a hint"}
               </button>
             </div>
+            {showSubmitProgress && (
+              <p className="tutor-progress-note" role="status">
+                Checking your answer…
+              </p>
+            )}
 
             {hints.map((hint, i) => (
               <div className="note info" key={i} style={{ marginTop: 12 }}>
@@ -1012,7 +1224,7 @@ function Learn({
           </div>
         ) : (
           <div className="card">
-            <h3>Session {view.session_status ?? "finished"}</h3>
+            <h1 className="exercise-title">Session {view.session_status ?? "finished"}</h1>
             {view.recommended_next && (
               <p className="sub">
                 Recommended next: <code>{view.recommended_next}</code>

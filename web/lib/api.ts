@@ -8,32 +8,222 @@
  * exists to prevent.
  */
 
+import { authClient } from "@/lib/auth/client";
+
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+const JWT_REFRESH_WINDOW_SECONDS = 60;
+const READ_TIMEOUT_MS = 20_000;
+const TUTOR_TIMEOUT_MS = 120_000;
+const HEALTH_TIMEOUT_MS = 25_000;
+const TIMEOUT_MESSAGE = "This is taking longer than usual. Please try again.";
+
+type CachedJwt = {
+  token: string;
+  expiresAt: number;
+};
+
+let cachedJwt: CachedJwt | null = null;
+let jwtRequest: Promise<string> | null = null;
 
 export class ApiError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(
+    readonly status: number,
+    message: string,
+    readonly kind: "network" | "http" | "timeout",
+  ) {
     super(message);
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  let response: Response;
+function jwtExpiration(token: string) {
   try {
-    response = await fetch(`${BASE}${path}`, {
+    const payload = token.split(".")[1];
+    if (!payload) return 0;
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const decoded: unknown = JSON.parse(atob(padded));
+    if (!decoded || typeof decoded !== "object" || !("exp" in decoded)) return 0;
+    const exp = (decoded as { exp?: unknown }).exp;
+    return typeof exp === "number" ? exp : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function clearCachedJwt() {
+  cachedJwt = null;
+  jwtRequest = null;
+}
+
+function sendToSignIn() {
+  clearCachedJwt();
+  if (typeof window !== "undefined") {
+    window.location.assign("/auth/sign-in");
+  }
+}
+
+async function loadJwt() {
+  try {
+    const result = await authClient.token();
+    if (result.error || !result.data?.token) {
+      const status = result.error?.status ?? 0;
+      if (status === 401) sendToSignIn();
+      throw new ApiError(
+        status,
+        status === 401
+          ? "Your session has ended. Please sign in again."
+          : status === 0 || status >= 500
+            ? "We couldn't reach the sign-in service. Please try again."
+            : "Something went wrong. Please try again.",
+        "http",
+      );
+    }
+
+    cachedJwt = {
+      token: result.data.token,
+      expiresAt: jwtExpiration(result.data.token),
+    };
+    return result.data.token;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(
+      0,
+      "We couldn't reach the sign-in service. Please try again.",
+      "http",
+    );
+  }
+}
+
+async function getJwt(forceRefresh = false) {
+  const now = Date.now() / 1000;
+  if (
+    !forceRefresh &&
+    cachedJwt &&
+    cachedJwt.expiresAt - now > JWT_REFRESH_WINDOW_SECONDS
+  ) {
+    return cachedJwt.token;
+  }
+
+  if (!forceRefresh && jwtRequest) return jwtRequest;
+  const request = loadJwt();
+  jwtRequest = request;
+  try {
+    return await request;
+  } finally {
+    if (jwtRequest === request) jwtRequest = null;
+  }
+}
+
+function isPublicEnginePath(path: string) {
+  return path === "/health" || path === "/skills";
+}
+
+async function engineFetch(
+  path: string,
+  init: RequestInit | undefined,
+  baseHeaders: Headers,
+  jwt: string | null,
+) {
+  const headers = new Headers(baseHeaders);
+  if (jwt) headers.set("Authorization", `Bearer ${jwt}`);
+
+  try {
+    return await fetch(`${BASE}${path}`, {
       ...init,
-      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+      headers,
       cache: "no-store",
     });
-  } catch {
-    // A dead engine and a wrong URL look identical from here, and both are worth
-    // saying out loud rather than rendering an empty page.
-    throw new ApiError(0, `Cannot reach the CogniFlow engine at ${BASE}.`);
+  } catch (error) {
+    // request() owns deadline errors. Let an abort retain its identity so a slow
+    // request is not mistaken for an unreachable engine.
+    if (init?.signal?.aborted) throw error;
+    console.warn("Tutoring engine request could not connect", {
+      method: init?.method ?? "GET",
+      path,
+      base: BASE,
+    });
+    throw new ApiError(0, "We couldn't reach the tutoring engine.", "network");
   }
-  if (!response.ok) {
-    const detail = await response.json().catch(() => ({}));
-    throw new ApiError(response.status, detail.detail ?? response.statusText);
+}
+
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  timeoutMs = READ_TIMEOUT_MS,
+): Promise<T> {
+  const headers = new Headers(init?.headers);
+  if (init?.body == null) {
+    headers.delete("Content-Type");
+  } else if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
   }
-  return response.json() as Promise<T>;
+  const controller = new AbortController();
+  const externalSignal = init?.signal;
+  const forwardAbort = () => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) {
+    forwardAbort();
+  } else {
+    externalSignal?.addEventListener("abort", forwardAbort, { once: true });
+  }
+
+  let timedOut = false;
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  const deadline = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+      reject(new ApiError(0, TIMEOUT_MESSAGE, "timeout"));
+    }, timeoutMs);
+  });
+
+  const execute = async () => {
+    const requestInit = { ...init, signal: controller.signal };
+    const needsAuth = !isPublicEnginePath(path);
+    let jwt = needsAuth ? await getJwt() : null;
+    let response = await engineFetch(path, requestInit, headers, jwt);
+
+    if (needsAuth && response.status === 401) {
+      jwt = await getJwt(true);
+      response = await engineFetch(path, requestInit, headers, jwt);
+      if (response.status === 401) {
+        sendToSignIn();
+        throw new ApiError(
+          401,
+          "Your session has ended. Please sign in again.",
+          "http",
+        );
+      }
+    }
+
+    if (!response.ok) {
+      const payload: unknown = await response.json().catch(() => null);
+      const detail =
+        payload && typeof payload === "object" && "detail" in payload
+          ? (payload as { detail?: unknown }).detail
+          : null;
+      const usableDetail = typeof detail === "string" && detail.trim() ? detail : null;
+      const message =
+        response.status === 403
+          ? "That progress belongs to a different account."
+          : response.status === 404
+            ? "We couldn't find that record. Try starting again."
+            : response.status >= 500
+              ? "The tutoring engine hit a problem. Please try again in a moment."
+              : usableDetail ?? "Something went wrong. Please try again.";
+      throw new ApiError(response.status, message, "http");
+    }
+    return response.json() as Promise<T>;
+  };
+
+  try {
+    return await Promise.race([execute(), deadline]);
+  } catch (error) {
+    if (timedOut) throw new ApiError(0, TIMEOUT_MESSAGE, "timeout");
+    throw error;
+  } finally {
+    if (timeoutHandle != null) clearTimeout(timeoutHandle);
+    externalSignal?.removeEventListener("abort", forwardAbort);
+  }
 }
 
 // ---------------------------------------------------------------- shapes
@@ -152,6 +342,7 @@ export type Plan = {
   suggested_next: string | null;
   counts: { total: number; done: number; provisional: number; upcoming: number };
   skills: PlanSkill[];
+  total_attempts: number;
 };
 
 export type Progress = {
@@ -196,7 +387,8 @@ export type Activity = {
 
 // ---------------------------------------------------------------- calls
 export const api = {
-  health: () => request<Health>("/health"),
+  health: (signal?: AbortSignal) =>
+    request<Health>("/health", { signal }, HEALTH_TIMEOUT_MS),
 
   startSession: (name: string, language?: string) =>
     request<SessionStart>("/session", {
@@ -211,19 +403,19 @@ export const api = {
     request<{ skill: string; correct: boolean }>(`/session/${id}/diagnostic`, {
       method: "POST",
       body: JSON.stringify({ skill, code }),
-    }),
+    }, TUTOR_TIMEOUT_MS),
 
   beginTutoring: (id: string, name: string, targetSkill?: string | null) =>
     request<TutorView>(`/session/${id}/start`, {
       method: "POST",
       body: JSON.stringify({ name, target_skill: targetSkill ?? null }),
-    }),
+    }, TUTOR_TIMEOUT_MS),
 
   submit: (id: string, code: string) =>
     request<TutorView>(`/session/${id}/submit`, {
       method: "POST",
       body: JSON.stringify({ code }),
-    }),
+    }, TUTOR_TIMEOUT_MS),
 
   /** Asking for help submits nothing and moves no mastery. The draft is sent
    *  because an unfinished attempt says more about where someone is stuck than
@@ -232,7 +424,7 @@ export const api = {
     request<{ skill: string; hints: string[] }>(`/session/${id}/hints`, {
       method: "POST",
       body: JSON.stringify({ code }),
-    }),
+    }, TUTOR_TIMEOUT_MS),
 
   plan: (id: string) => request<Plan>(`/student/${id}/plan`),
 

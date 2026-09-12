@@ -4,6 +4,9 @@ import type { Activity } from "@/lib/api";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
+// Each heatmap column is 18 px including its gap. Two columns leave enough room for
+// every three-letter month name at the rendered 10 px size.
+const MIN_MONTH_LABEL_COLUMNS = 2;
 
 function startOfLocalDay(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -33,6 +36,26 @@ function monthName(date: Date) {
 
 function attemptText(count: number) {
   return `${count} attempt${count === 1 ? "" : "s"}`;
+}
+
+function buildMonthLabels(weeks: Date[][]) {
+  const labels = weeks.map((week, index) => {
+    const firstDay = week[0];
+    const previous = index > 0 ? weeks[index - 1][0] : null;
+    return !previous || previous.getMonth() !== firstDay.getMonth()
+      ? monthName(firstDay)
+      : "";
+  });
+  let previousLabel = -MIN_MONTH_LABEL_COLUMNS;
+  labels.forEach((label, index) => {
+    if (!label) return;
+    if (index - previousLabel < MIN_MONTH_LABEL_COLUMNS) {
+      // Prefer the newer month when the range starts in the final week of the old one.
+      labels[previousLabel] = "";
+    }
+    previousLabel = index;
+  });
+  return labels;
 }
 
 function intensity(count: number) {
@@ -82,13 +105,7 @@ export function StudentDashboard({ activity }: { activity: Activity }) {
   const weeks = Array.from({ length: 16 }, (_, week) =>
     Array.from({ length: 7 }, (_, day) => addDays(firstWeek, week * 7 + day)),
   );
-  const monthLabels = weeks.map((week, index) => {
-    const firstDay = week[0];
-    const previous = index > 0 ? weeks[index - 1][0] : null;
-    return !previous || previous.getMonth() !== firstDay.getMonth()
-      ? monthName(firstDay)
-      : "";
-  });
+  const monthLabels = buildMonthLabels(weeks);
   const hourCounts = HOURS.map((hour) => byHour.get(hour) ?? 0);
   const maxHour = Math.max(0, ...hourCounts);
   const streak = currentStreak(byDay);
