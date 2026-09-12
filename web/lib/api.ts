@@ -17,13 +17,16 @@ const TUTOR_TIMEOUT_MS = 120_000;
 const HEALTH_TIMEOUT_MS = 25_000;
 const TIMEOUT_MESSAGE = "This is taking longer than usual. Please try again.";
 
+declare const jwtBrand: unique symbol;
+type Jwt = string & { readonly [jwtBrand]: true };
+
 type CachedJwt = {
-  token: string;
+  token: Jwt;
   expiresAt: number;
 };
 
 let cachedJwt: CachedJwt | null = null;
-let jwtRequest: Promise<string> | null = null;
+let jwtRequest: Promise<Jwt> | null = null;
 
 type AuthRouteFailure = {
   route: "/api/auth/token" | "/api/auth/get-session";
@@ -33,7 +36,7 @@ type AuthRouteFailure = {
 };
 
 type AuthTokenAttempt =
-  | { token: string; failure: null }
+  | { token: Jwt; failure: null }
   | { token: null; failure: AuthRouteFailure };
 
 export class ApiError extends Error {
@@ -47,13 +50,44 @@ export class ApiError extends Error {
   }
 }
 
-function jwtExpiration(token: string) {
+function decodeJwtSegment(segment: string): unknown {
+  const base64 = segment.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+  return JSON.parse(atob(padded)) as unknown;
+}
+
+function usableJwt(value: unknown): Jwt | null {
+  if (typeof value !== "string") return null;
+  const segments = value.split(".");
+  if (
+    segments.length !== 3 ||
+    segments.some((segment) => !/^[A-Za-z0-9_-]+$/.test(segment))
+  ) {
+    return null;
+  }
+
+  try {
+    const header = decodeJwtSegment(segments[0]);
+    if (
+      !header ||
+      typeof header !== "object" ||
+      !("alg" in header) ||
+      typeof (header as { alg?: unknown }).alg !== "string" ||
+      !(header as { alg: string }).alg.trim()
+    ) {
+      return null;
+    }
+    return value as Jwt;
+  } catch {
+    return null;
+  }
+}
+
+function jwtExpiration(token: Jwt) {
   try {
     const payload = token.split(".")[1];
     if (!payload) return 0;
-    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
-    const decoded: unknown = JSON.parse(atob(padded));
+    const decoded = decodeJwtSegment(payload);
     if (!decoded || typeof decoded !== "object" || !("exp" in decoded)) return 0;
     const exp = (decoded as { exp?: unknown }).exp;
     return typeof exp === "number" ? exp : 0;
@@ -74,7 +108,7 @@ function sendToSignIn() {
   }
 }
 
-function cacheJwt(token: string) {
+function cacheJwt(token: Jwt) {
   cachedJwt = {
     token,
     expiresAt: jwtExpiration(token),
@@ -92,29 +126,53 @@ function authRouteFailure(
   route: AuthRouteFailure["route"],
   status: number,
   unauthenticated = status === 401,
+  unavailable = status === 0 || status >= 500,
 ): AuthRouteFailure {
-  const failure = {
+  return {
     route,
     status,
     unauthenticated,
-    unavailable: status === 0 || status >= 500,
+    unavailable,
   };
-  console.warn("Neon Auth route did not provide a JWT", {
-    route: failure.route,
-    status: failure.status,
+}
+
+function warnAuthFailures(failures: AuthRouteFailure[]) {
+  console.warn("Neon Auth did not provide a usable JWT", {
+    failures: failures.map(({ route, status }) => ({ step: route, status })),
   });
-  return failure;
 }
 
 async function tokenRouteJwt(): Promise<AuthTokenAttempt> {
   try {
-    const result = await authClient.token({
-      fetchOptions: { credentials: "include" },
+    const response = await fetch("/api/auth/token", {
+      credentials: "include",
+      cache: "no-store",
+      headers: { accept: "application/json" },
     });
-    if (result.data?.token) return { token: result.data.token, failure: null };
+    if (!response.ok) {
+      return {
+        token: null,
+        failure: authRouteFailure(
+          "/api/auth/token",
+          response.status,
+          response.status === 401,
+          response.status !== 401,
+        ),
+      };
+    }
+
+    const body: unknown = await response.json().catch(() => null);
+    const candidate =
+      typeof body === "string"
+        ? body
+        : body && typeof body === "object" && "token" in body
+          ? (body as { token?: unknown }).token
+          : null;
+    const token = usableJwt(candidate);
+    if (token) return { token, failure: null };
     return {
       token: null,
-      failure: authRouteFailure("/api/auth/token", result.error?.status ?? 200),
+      failure: authRouteFailure("/api/auth/token", response.status),
     };
   } catch (error) {
     return {
@@ -137,10 +195,11 @@ async function sessionRouteJwt(): Promise<AuthTokenAttempt> {
         },
       },
     });
-    const sessionJwt =
-      headerJwt ??
-      (typeof result.data?.session?.token === "string" ? result.data.session.token : null);
-    if (sessionJwt) return { token: sessionJwt, failure: null };
+    const headerToken = usableJwt(headerJwt);
+    if (headerToken) return { token: headerToken, failure: null };
+
+    const sessionToken = usableJwt(result.data?.session?.token);
+    if (sessionToken) return { token: sessionToken, failure: null };
 
     const status = result.error?.status ?? responseStatus ?? 200;
     const hasSession = Boolean(result.data?.session && result.data.user);
@@ -164,11 +223,22 @@ async function loadJwt() {
   const tokenAttempt = await tokenRouteJwt();
   if (tokenAttempt.token !== null) return cacheJwt(tokenAttempt.token);
 
+  if (tokenAttempt.failure.unauthenticated) {
+    warnAuthFailures([tokenAttempt.failure]);
+    sendToSignIn();
+    throw new ApiError(
+      401,
+      "Your session has ended. Please sign in again.",
+      "http",
+    );
+  }
+
   const sessionAttempt = await sessionRouteJwt();
   if (sessionAttempt.token !== null) return cacheJwt(sessionAttempt.token);
 
   const tokenFailure = tokenAttempt.failure;
   const sessionFailure = sessionAttempt.failure;
+  warnAuthFailures([tokenFailure, sessionFailure]);
   if (tokenFailure.unauthenticated && sessionFailure.unauthenticated) {
     sendToSignIn();
     throw new ApiError(
@@ -225,7 +295,7 @@ async function engineFetch(
   path: string,
   init: RequestInit | undefined,
   baseHeaders: Headers,
-  jwt: string | null,
+  jwt: Jwt | null,
 ) {
   const headers = new Headers(baseHeaders);
   if (jwt) headers.set("Authorization", `Bearer ${jwt}`);
