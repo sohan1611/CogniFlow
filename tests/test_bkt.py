@@ -7,16 +7,25 @@ import random
 
 import pytest
 
-from app.mastery.bkt import BKTParams, confidence_from_attempts, posterior, update
+from app.mastery.bkt import MASTERY_CEILING, BKTParams, posterior, update
+from app.mastery.evidence import Observation, accumulate, confidence_from_evidence
 from app.models.enums import StudentOutcome, SystemFault
 from app.models.errors import InvalidEvidenceError
 from app.models.schemas import SkillNode
 
 
 def test_correct_never_decreases_mastery() -> None:
+    """1.0 is excluded because mastery is now capped at MASTERY_CEILING.
+
+    An estimate of exactly 1.0 has infinite odds, so no future evidence of any kind could
+    ever revise it -- that is not a belief, it is a decoration. A stored 1.0 from an older
+    row is pulled down to the ceiling on its next observation, which is the intended
+    behaviour rather than a decrease in belief.
+    """
     prm = BKTParams()
-    for start in [0.0, 0.1, 0.25, 0.5, 0.75, 0.95, 1.0]:
+    for start in [0.0, 0.1, 0.25, 0.5, 0.75, 0.95]:
         assert update(start, StudentOutcome.CORRECT, prm) >= start
+    assert update(1.0, StudentOutcome.CORRECT, prm) == MASTERY_CEILING
 
 
 def test_posterior_strictly_decreases_on_incorrect() -> None:
@@ -52,11 +61,27 @@ def test_system_faults_raise_invalid_evidence(fault: SystemFault) -> None:
         update(0.5, fault, BKTParams())  # type: ignore[arg-type]
 
 
-def test_confidence_from_attempts_is_increasing_and_bounded() -> None:
-    values = [confidence_from_attempts(attempts) for attempts in range(20)]
+def test_confidence_grows_with_consistent_evidence_and_is_bounded() -> None:
+    """Replaces the old attempt-counting test.
+
+    confidence_from_attempts saw only a count, so five correct and five incorrect both
+    returned 0.7135 and confidence could never fall. It is now a function of how much the
+    evidence AGREES, so this asserts growth along a CONSISTENT run specifically.
+    """
+    prm = BKTParams()
+    weight = agreed = against = 0.0
+    values = [confidence_from_evidence(weight, agreed, against, prm.p_slip, prm.p_guess)]
+    for _ in range(19):
+        weight, agreed, against = accumulate(
+            weight, agreed, against,
+            Observation(outcome=StudentOutcome.CORRECT, distinct_expectations=2),
+        )
+        values.append(
+            confidence_from_evidence(weight, agreed, against, prm.p_slip, prm.p_guess)
+        )
     assert values[0] == 0.0
-    assert all(values[i] < values[i + 1] for i in range(len(values) - 1))
-    assert all(0.0 <= value < 1.0 for value in values)
+    assert all(values[i] <= values[i + 1] for i in range(len(values) - 1))
+    assert all(0.0 <= value <= 1.0 for value in values)
 
 
 def test_bkt_params_reject_degenerate_slip_guess_sum() -> None:

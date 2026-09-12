@@ -38,6 +38,8 @@ from app.graph.state import AgentState
 from app.llm.provider import Role
 from app.mastery import policy
 from app.mastery.bkt import resolve_misconceptions, update_skill
+from app.mastery.attribution import debits
+from app.mastery.evidence import Observation
 from app.mastery.guard import validate
 from app.mastery.difficulty import ladder_summary, rung_for
 from app.mastery.policy import PolicyContext
@@ -706,6 +708,8 @@ def make_execute_and_grade(deps: GraphDeps) -> Node:
                 "grader_result": grade.model_dump(mode="json"),
                 "execution_result": None,
                 "error_type": StudentOutcome.WRONG_ANSWER.value,
+                "evidence_score": 0.0,
+                "distinct_expectations": 1,
             }
 
         raw_cases = problem.get("test_cases") or []
@@ -774,10 +778,29 @@ def make_execute_and_grade(deps: GraphDeps) -> Node:
                 "score": grade.score,
             },
         )
+        # How falsifiable was this suite? A suite whose cases all expect the same string
+        # can be passed by printing that string, so a pass against it is worth less. This
+        # counts the DISTINCT expectations actually graded, not the number of cases.
+        distinct = len(
+            {
+                str(
+                    case.get("expected_output")
+                    or case.get("expected")
+                    or case.get("output")
+                    or ""
+                ).strip()
+                for case in cases
+            }
+        ) if cases else 1
+
         return {
             "execution_result": exec_result.model_dump(mode="json") if exec_result else None,
             "grader_result": grade.model_dump(mode="json"),
             "error_type": str(outcome),
+            # Carried to update_mastery, which until now saw only pass/fail and threw the
+            # rest of what we measured away.
+            "evidence_score": float(score),
+            "distinct_expectations": max(1, distinct),
         }
 
     return execute_and_grade
@@ -896,6 +919,12 @@ def make_analyze_misconception(deps: GraphDeps) -> Node:
         # point where the CAUSE is known, so it is the right place to phrase it.
         patch: dict[str, Any] = {
             "skill_graph": skills,
+            # ONLY the deterministic pattern may move a mastery score. `found` is a match
+            # against the interpreter's own stderr -- a NameError IS a scope fact -- while
+            # analysis.likely_prerequisite_gap may have come from the model. The model's
+            # opinion still routes the next problem through detected_misconceptions below;
+            # it must never decide what a student's record says about them (RULE 4).
+            "attribution_hint": found.prerequisite_hint if found is not None else None,
             "detected_misconceptions": [
                 *state.get("detected_misconceptions", []),
                 {
@@ -933,8 +962,24 @@ def make_update_mastery(deps: GraphDeps) -> Node:
         assert skill is not None
 
         graph = _graph_from_state(state)
-        node = graph.nodes[skill]
-        updated, audit = update_skill(node, outcome, deps.bkt)
+
+        # What this submission is worth as evidence, rather than the single bit it used
+        # to be: partial credit from the test cases, and how falsifiable the suite was.
+        observation = Observation(
+            outcome=outcome,
+            score=float(state.get("evidence_score", 0.0) or 0.0),
+            distinct_expectations=int(state.get("distinct_expectations", 1) or 1),
+        )
+
+        # And WHICH skill it is evidence about. A scope error on a loops exercise is
+        # mostly evidence about variables; the tutor already says so in its feedback, and
+        # until now said it while taking the mark off loops.
+        hint = state.get("attribution_hint") if outcome != StudentOutcome.CORRECT else None
+        split = debits(skill, hint, graph.nodes[skill].prerequisites)
+
+        updated, audit = update_skill(
+            graph.nodes[skill], observation, deps.bkt, share=split[0][1]
+        )
 
         # Resolution belongs here because this is the only place mastery moves, so it is
         # the only place the bar for "they have grown out of it" can newly be met.
@@ -963,6 +1008,39 @@ def make_update_mastery(deps: GraphDeps) -> Node:
         confidence = dict(state.get("confidence_scores", {}))
         confidence[skill] = updated.confidence
 
+        # The prerequisite's share, when the failure named one. Two rows are written for
+        # one submission and their shares sum to 1.0, so this splits the observation
+        # rather than duplicating it.
+        for other, share in split[1:]:
+            if other not in graph.nodes:
+                continue
+            moved, moved_audit = update_skill(
+                graph.nodes[other], observation, deps.bkt,
+                share=share, attributed_from=skill,
+            )
+            deps.store.save_skill(state["student_id"], moved)
+            deps.store.log_attempt(state["student_id"], state["session_id"], moved_audit)
+            skills[other] = moved.model_dump(mode="json")
+            mastery[other] = moved.mastery
+            confidence[other] = moved.confidence
+            deps.events.emit(
+                "update_mastery",
+                EventType.MASTERY,
+                {
+                    "skill": other,
+                    "outcome": str(outcome),
+                    "before": round(moved_audit.mastery_before, 4),
+                    "after": round(moved_audit.mastery_after, 4),
+                    "attempts": moved_audit.attempts_after,
+                    "attributed_from": skill,
+                    "share": share,
+                },
+                reason=(
+                    f"the mistake on {skill} was diagnosed as a {other} problem, "
+                    f"so {int(share * 100)}% of it counts against {other}"
+                ),
+            )
+
         passed = outcome == StudentOutcome.CORRECT
         failures = 0 if passed else state.get("consecutive_failures", 0) + 1
         topic = dict(state.get("topic_attempt_count", {}))
@@ -977,6 +1055,9 @@ def make_update_mastery(deps: GraphDeps) -> Node:
                 "before": round(audit.mastery_before, 4),
                 "after": round(audit.mastery_after, 4),
                 "attempts": audit.attempts_after,
+                "weight": round(audit.weight, 3),
+                "share": audit.share,
+                "score": round(observation.score, 3),
             },
         )
         return {

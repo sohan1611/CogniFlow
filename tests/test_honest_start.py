@@ -113,7 +113,13 @@ def test_old_demo_seed_without_real_attempts_needs_diagnostic(tmp_path: Path) ->
     store = StudentStore(tmp_path / "seeded.db")
     nodes = seed_student(store, "seeded")
 
-    assert sum(node.attempts for node in nodes.values()) == 24
+    # Every seeded skill claims some attempts. The exact total is no longer a fixed 24:
+    # the seed used to write a flat attempts=3 next to a confidence of up to 0.85, a pair
+    # no formula could produce, and each skill's attempt count is now derived from the
+    # confidence it claims so the row is at least self-consistent.
+    assert all(node.attempts > 0 for node in nodes.values())
+    # The property under test is unchanged and is the one that matters: seeded numbers are
+    # not evidence, so nothing was actually logged and the student still owes a diagnostic.
     assert store.attempts_for("seeded") == []
     assert store.needs_diagnostic("seeded") is True
 

@@ -26,7 +26,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
-from app.mastery.bkt import BKTParams, confidence_from_attempts, update
+from app.mastery.bkt import BKTParams, update
+from app.mastery.evidence import Observation, accumulate, confidence_from_evidence
 from app.mastery.policy import (
     MASTERY_THRESHOLD,
     PolicyContext,
@@ -37,14 +38,40 @@ from app.models.enums import AdaptationAction, StudentOutcome
 from app.models.schemas import SkillNode
 from eval.simulator import SimulatedStudent
 
+def _folded(node, correct: bool) -> dict[str, float]:
+    """Evidence counters and confidence after one simulated observation.
+
+    The simulator emits a plain right/wrong with no test-case detail, so every
+    observation is full strength on a two-distinct-case suite -- the arms stay comparable
+    because they all pay the same price for information.
+    """
+
+    prm = BKTParams()
+    obs = Observation(
+        outcome=StudentOutcome.CORRECT if correct else StudentOutcome.WRONG_ANSWER,
+        distinct_expectations=2,
+    )
+    weight, agreed, against = accumulate(
+        node.evidence_weight, node.agree_correct, node.agree_wrong, obs
+    )
+    return {
+        "evidence_weight": weight,
+        "agree_correct": agreed,
+        "agree_wrong": against,
+        "confidence": confidence_from_evidence(
+            weight, agreed, against, prm.p_slip, prm.p_guess
+        ),
+    }
+
+
 MAX_STEPS = 40
 PRETEST_ATTEMPTS = 3
 """Attempts per direct prerequisite before teaching begins. Charged to every arm's
 budget equally, so no arm buys information the others do not pay for.
 
 THREE, not two, and the number is derived rather than chosen: the policy refuses to
-redirect on a prerequisite whose estimate has confidence below 0.5, and
-confidence_from_attempts only crosses 0.5 at the third observation. The diagnostic
+redirect on a prerequisite whose estimate has confidence below 0.5, and confidence
+only crosses 0.5 at the third CONSISTENT observation. The diagnostic
 budget therefore follows the evidence the policy requires, instead of the policy being
 tuned to whatever the budget happened to be.
 
@@ -126,7 +153,7 @@ def run_session(
                         StudentOutcome.CORRECT if pre_correct else StudentOutcome.WRONG_ANSWER,
                         prm,
                     ),
-                    "confidence": confidence_from_attempts(pnode.attempts + 1),
+                    **_folded(pnode, pre_correct),
                     "attempts": pnode.attempts + 1,
                 }
             )
@@ -144,7 +171,7 @@ def run_session(
         belief[current] = node.model_copy(
             update={
                 "mastery": new_mastery,
-                "confidence": confidence_from_attempts(attempts),
+                **_folded(node, correct),
                 "attempts": attempts,
             }
         )

@@ -14,6 +14,7 @@ watch is the thing CI checks.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -25,6 +26,7 @@ from app.graph.builder import build_graph
 from app.graph.deps import GraphDeps
 from app.graph.state import initial_state
 from app.mastery.skill_graph import SkillGraph
+from app.mastery.evidence import CONFIDENCE_K
 from app.models.enums import SystemFault
 from app.models.schemas import SkillNode
 from app.services.events import EventLog
@@ -162,8 +164,22 @@ def seed_student(
     nodes = SkillGraph.from_yaml(SKILLS_CONFIG).nodes
     for skill, (mastery, confidence) in (seed or DEMO_SEED).items():
         if skill in nodes:
+            # Evidence counters derived from the seeded confidence rather than invented
+            # alongside it. The old seed wrote attempts=3 with confidence up to 0.85 --
+            # a pair no formula could produce, which only went unnoticed while confidence
+            # was a bare attempt count. Confidence is now earned from evidence, so the
+            # seed states how much evidence it is claiming and stays self-consistent.
+            weight = -CONFIDENCE_K * math.log(1.0 - min(confidence, 0.99))
+            agreeing = mastery >= 0.5
             nodes[skill] = nodes[skill].model_copy(
-                update={"mastery": mastery, "confidence": confidence, "attempts": 3}
+                update={
+                    "mastery": mastery,
+                    "confidence": confidence,
+                    "attempts": max(1, math.ceil(weight)),
+                    "evidence_weight": weight,
+                    "agree_correct": weight if agreeing else 0.0,
+                    "agree_wrong": 0.0 if agreeing else weight,
+                }
             )
     store.seed(student_id, nodes)
     return nodes

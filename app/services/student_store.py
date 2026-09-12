@@ -58,6 +58,9 @@ CREATE TABLE IF NOT EXISTS skill_mastery (
     prerequisites  TEXT NOT NULL DEFAULT '[]',
     misconceptions TEXT NOT NULL DEFAULT '[]',
     resolved_misconceptions TEXT NOT NULL DEFAULT '[]',
+    evidence_weight REAL NOT NULL DEFAULT 0,
+    agree_correct   REAL NOT NULL DEFAULT 0,
+    agree_wrong     REAL NOT NULL DEFAULT 0,
     updated_at     TEXT NOT NULL,
     PRIMARY KEY (student_id, skill)
 );
@@ -99,6 +102,9 @@ POSTGRES_SCHEMA = (
         prerequisites  TEXT NOT NULL DEFAULT '[]',
         misconceptions TEXT NOT NULL DEFAULT '[]',
         resolved_misconceptions TEXT NOT NULL DEFAULT '[]',
+        evidence_weight DOUBLE PRECISION NOT NULL DEFAULT 0,
+        agree_correct   DOUBLE PRECISION NOT NULL DEFAULT 0,
+        agree_wrong     DOUBLE PRECISION NOT NULL DEFAULT 0,
         updated_at     TEXT NOT NULL,
         PRIMARY KEY (student_id, skill)
     )""",
@@ -114,6 +120,15 @@ POSTGRES_SCHEMA = (
     )""",
     "CREATE INDEX IF NOT EXISTS idx_attempt_student ON attempt_log(student_id, skill)",
     "ALTER TABLE students ADD COLUMN IF NOT EXISTS diagnosed_at TEXT",
+    # The evidence behind a confidence score. Additive and idempotent, like the line
+    # above: production already holds rows written before confidence stopped being a
+    # function of the attempt count.
+    "ALTER TABLE skill_mastery ADD COLUMN IF NOT EXISTS"
+    " evidence_weight DOUBLE PRECISION NOT NULL DEFAULT 0",
+    "ALTER TABLE skill_mastery ADD COLUMN IF NOT EXISTS"
+    " agree_correct DOUBLE PRECISION NOT NULL DEFAULT 0",
+    "ALTER TABLE skill_mastery ADD COLUMN IF NOT EXISTS"
+    " agree_wrong DOUBLE PRECISION NOT NULL DEFAULT 0",
 )
 
 POOL_APPLICATION_NAME = "cogniflow-engine"
@@ -235,6 +250,14 @@ class StudentStore:
                 "ALTER TABLE skill_mastery"
                 " ADD COLUMN resolved_misconceptions TEXT NOT NULL DEFAULT '[]'"
             )
+        # Confidence is no longer a function of the attempt count, so the evidence behind
+        # it has to survive a reload. Without these three a returning student's confidence
+        # would silently restart from zero every session.
+        for column in ("evidence_weight", "agree_correct", "agree_wrong"):
+            if column not in skill_columns:
+                conn.execute(
+                    f"ALTER TABLE skill_mastery ADD COLUMN {column} REAL NOT NULL DEFAULT 0"
+                )
 
     def _sql(self, query: str) -> str:
         """SQLite binds `?`, psycopg binds `%s`. Every query here is written once, for both."""
@@ -337,6 +360,12 @@ class StudentStore:
                 prerequisites=json.loads(row["prerequisites"]),
                 misconceptions=json.loads(row["misconceptions"]),
                 resolved_misconceptions=json.loads(row["resolved_misconceptions"]),
+                # Older rows predate these columns; the DEFAULT 0 means such a skill
+                # reads back as unmeasured, which is the honest answer for a value we
+                # cannot account for.
+                evidence_weight=row["evidence_weight"] or 0.0,
+                agree_correct=row["agree_correct"] or 0.0,
+                agree_wrong=row["agree_wrong"] or 0.0,
             )
             for row in rows
         }
@@ -346,13 +375,17 @@ class StudentStore:
             self._sql(
                 "INSERT INTO skill_mastery"
                 " (student_id, skill, mastery, confidence, attempts, prerequisites,"
-                "  misconceptions, resolved_misconceptions, updated_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                "  misconceptions, resolved_misconceptions,"
+                "  evidence_weight, agree_correct, agree_wrong, updated_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT (student_id, skill) DO UPDATE SET"
                 "  mastery=excluded.mastery, confidence=excluded.confidence,"
                 "  attempts=excluded.attempts, prerequisites=excluded.prerequisites,"
                 "  misconceptions=excluded.misconceptions,"
                 "  resolved_misconceptions=excluded.resolved_misconceptions,"
+                "  evidence_weight=excluded.evidence_weight,"
+                "  agree_correct=excluded.agree_correct,"
+                "  agree_wrong=excluded.agree_wrong,"
                 "  updated_at=excluded.updated_at"
             ),
             (
@@ -364,6 +397,9 @@ class StudentStore:
                 json.dumps(node.prerequisites),
                 json.dumps(node.misconceptions),
                 json.dumps(node.resolved_misconceptions),
+                node.evidence_weight,
+                node.agree_correct,
+                node.agree_wrong,
                 _now(),
             ),
         )

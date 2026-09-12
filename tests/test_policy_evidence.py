@@ -11,7 +11,27 @@ from __future__ import annotations
 
 import pytest
 
-from app.mastery.bkt import confidence_from_attempts
+from app.mastery.bkt import BKTParams
+from app.mastery.evidence import Observation, accumulate, confidence_from_evidence
+from app.models.enums import StudentOutcome
+
+
+def _confidence(attempts: int, correct: bool = True) -> float:
+    """Confidence after N CONSISTENT observations.
+
+    Was confidence_from_attempts(n). Confidence now depends on whether the evidence
+    agrees, so the fixture has to say which way it pointed; consistent evidence is what
+    the old function implicitly assumed.
+    """
+    prm = BKTParams()
+    weight = agreed = against = 0.0
+    outcome = StudentOutcome.CORRECT if correct else StudentOutcome.WRONG_ANSWER
+    for _ in range(attempts):
+        weight, agreed, against = accumulate(
+            weight, agreed, against,
+            Observation(outcome=outcome, distinct_expectations=2),
+        )
+    return confidence_from_evidence(weight, agreed, against, prm.p_slip, prm.p_guess)
 from app.mastery.guard import validate
 from app.mastery.policy import (
     PREREQ_EVIDENCE_CONFIDENCE,
@@ -37,7 +57,7 @@ def _graph(*, prereq_mastery: float, prereq_attempts: int) -> SkillGraph:
             "functions": SkillNode(
                 skill="functions",
                 mastery=prereq_mastery,
-                confidence=confidence_from_attempts(prereq_attempts),
+                confidence=_confidence(prereq_attempts),
                 attempts=prereq_attempts,
                 prerequisites=["variables"],
             ),
@@ -99,11 +119,13 @@ def test_a_prerequisite_that_is_only_marginally_weak_does_not_trigger_one() -> N
 def test_the_confidence_bar_is_what_demands_a_third_observation() -> None:
     """The evidence budget is derived, not chosen.
 
-    confidence_from_attempts crosses PREREQ_EVIDENCE_CONFIDENCE at three observations,
-    which is why the diagnostic pre-test asks three questions rather than two.
+    Confidence crosses PREREQ_EVIDENCE_CONFIDENCE at three CONSISTENT observations,
+    which is why the diagnostic pre-test asks three questions rather than two. The
+    constant CONFIDENCE_K = 3.0 was chosen to preserve exactly this property when
+    confidence stopped being a function of raw attempt count.
     """
-    assert confidence_from_attempts(2) < PREREQ_EVIDENCE_CONFIDENCE
-    assert confidence_from_attempts(3) >= PREREQ_EVIDENCE_CONFIDENCE
+    assert _confidence(2) < PREREQ_EVIDENCE_CONFIDENCE
+    assert _confidence(3) >= PREREQ_EVIDENCE_CONFIDENCE
 
 
 # ------------------------------------------------------- the hint bypass

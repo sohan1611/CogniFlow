@@ -25,6 +25,30 @@ class SkillNode(BaseModel):
     attempts: int = Field(ge=0, default=0)
     prerequisites: list[str] = Field(default_factory=list)
 
+    evidence_weight: float = Field(ge=0.0, default=0.0)
+    """Total weight of student evidence seen for this skill.
+
+    Not the same as `attempts`: five syntax errors are five attempts but only 0.75 of an
+    observation, because a program that never ran said almost nothing about the concept.
+    This is also what distinguishes a skill we have MEASURED from one we merely hold a
+    prior for -- see `measured`."""
+
+    agree_correct: float = Field(ge=0.0, default=0.0)
+    agree_wrong: float = Field(ge=0.0, default=0.0)
+    """Recency-discounted evidence for and against, feeding confidence. Kept as running
+    sums so confidence is O(1) to update and reconstructible from the attempt log."""
+
+    @property
+    def measured(self) -> bool:
+        """Whether anything has actually been observed about this skill.
+
+        A skill at its prior is not a skill at 30%: it is a skill we have never tested.
+        Showing the prior as a number is how three untested skills came to display 0.24
+        indistinguishably from a skill the student had genuinely failed once.
+        """
+
+        return self.evidence_weight > 0.0
+
     misconceptions: list[str] = Field(default_factory=list)
     """Misunderstandings the student is believed to hold RIGHT NOW."""
 
@@ -90,6 +114,17 @@ class SkillUpdate(BaseModel):
     confidence_after: float
     outcome: StudentOutcome
     attempts_after: int
+
+    weight: float = 1.0
+    """How much of a full observation this submission was worth for this skill."""
+
+    share: float = 1.0
+    """This skill's slice of the observation. Below 1.0 when a failure was split with a
+    prerequisite; the shares of one submission always sum to exactly 1.0."""
+
+    attributed_from: str | None = None
+    """Set on the prerequisite row when the debit arrived from another skill's exercise,
+    so the audit trail can say why `variables` moved during a loops problem."""
 
 from app.models.enums import (
     Difficulty, TeachingMode, AssessmentType, AdaptationAction,

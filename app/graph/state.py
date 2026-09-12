@@ -109,6 +109,22 @@ class AgentState(TypedDict, total=False):
     error_count: int
     last_error: str | None
     error_type: str | None
+
+    evidence_score: float
+    """Fraction of test cases the submission passed. Feeds the mastery update: failing
+    1 of 4 is not the same evidence as failing 4 of 4, and used to be treated as if it
+    were."""
+
+    distinct_expectations: int
+    """How many DIFFERENT expected outputs the graded suite held. Sets how much a pass is
+    worth: a suite with one literal expectation can be passed by printing that literal."""
+
+    attribution_hint: str | None
+    """Prerequisite implicated by a DETERMINISTIC misconception rule, and nothing else.
+
+    Kept separate from `detected_misconceptions[].implicates`, which may come from the
+    LLM. That value routes the next problem; this one moves a mastery score, and CLAUDE.md
+    RULE 4 forbids a model deciding what a student's record says about them."""
     session_status: str
     loop_count: int
     prereq_depth: int
@@ -176,6 +192,9 @@ def initial_state(
         error_count=0,
         last_error=None,
         error_type=None,
+        evidence_score=0.0,
+        distinct_expectations=1,
+        attribution_hint=None,
         session_status=str(SessionStatus.ACTIVE),
         loop_count=0,
         prereq_depth=0,

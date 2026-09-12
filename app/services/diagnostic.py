@@ -25,14 +25,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from app.mastery.bkt import BKTParams, confidence_from_attempts, update
+from app.mastery.bkt import BKTParams, update
+from app.mastery.evidence import (
+    Observation,
+    accumulate,
+    confidence_from_evidence,
+    coverage,
+)
 from app.mastery.skill_graph import SkillGraph
 from app.models.enums import StudentOutcome
 from app.models.schemas import DiagnosticResult, SkillNode
 
-# A prior of 0.5 says "we genuinely do not know", which is the honest starting point for
-# someone we have never met. Confidence starts at zero attempts and is earned.
-UNKNOWN_MASTERY = 0.5
+# The prior for someone we have never met. It is BKTParams.p_init and nothing else: this
+# module used to carry its own 0.5, which silently overrode the p_init the rest of the
+# system believed it was using, so two disagreeing priors existed and the documented one
+# was the unreachable one.
+UNKNOWN_MASTERY = BKTParams().p_init
 
 
 @dataclass(frozen=True)
@@ -144,11 +152,16 @@ class DiagnosticSession:
     skipped: dict[str, str] = field(default_factory=dict)
     """skill -> the failed prerequisite that made asking pointless."""
 
-    _beliefs: dict[str, tuple[float, int]] = field(default_factory=dict)
+    _beliefs: dict[str, tuple[float, int, float, float, float]] = field(default_factory=dict)
+    """skill -> (mastery, attempts, evidence_weight, agree_correct, agree_wrong).
+
+    The last three are what confidence is computed from. Carried here rather than
+    recomputed from `answered` so the diagnostic's arithmetic is identical to the one the
+    graph uses for ordinary attempts."""
 
     def __post_init__(self) -> None:
         if not self._beliefs:
-            self._beliefs = {s: (UNKNOWN_MASTERY, 0) for s in self.graph.nodes}
+            self._beliefs = {s: (UNKNOWN_MASTERY, 0, 0.0, 0.0, 0.0) for s in self.graph.nodes}
 
     # -- ordering ----------------------------------------------------------
     def _order(self) -> list[DiagnosticQuestion]:
@@ -199,8 +212,19 @@ class DiagnosticSession:
     # -- recording ---------------------------------------------------------
     def record(self, skill: str, outcome: StudentOutcome) -> None:
         """Fold one answer into the belief for that skill."""
-        mastery, attempts = self._beliefs.get(skill, (UNKNOWN_MASTERY, 0))
-        self._beliefs[skill] = (update(mastery, outcome, self.bkt), attempts + 1)
+        mastery, attempts, weight, agreed, against = self._beliefs.get(
+            skill, (UNKNOWN_MASTERY, 0, 0.0, 0.0, 0.0)
+        )
+        # Every diagnostic question is graded against a SINGLE expected output, so
+        # distinct_expectations is 1 and guess_for prices it at 0.20 -- the weakest
+        # instrument we own. Four of the eight expect the literal "10", so `print(10)`
+        # passes half the diagnostic; a pass here is deliberately worth less than a pass
+        # on a real exercise carrying several distinct cases.
+        obs = Observation(outcome=outcome, score=0.0, distinct_expectations=1)
+        weight, agreed, against = accumulate(weight, agreed, against, obs)
+        self._beliefs[skill] = (
+            update(mastery, obs, self.bkt), attempts + 1, weight, agreed, against,
+        )
         self.answered[skill] = outcome
 
     # -- result ------------------------------------------------------------
@@ -214,16 +238,26 @@ class DiagnosticSession:
         """
         nodes: dict[str, SkillNode] = {}
         for skill, node in self.graph.nodes.items():
-            mastery, attempts = self._beliefs[skill]
+            mastery, attempts, weight, agreed, against = self._beliefs[skill]
             if skill in self.skipped:
                 blocker = self.skipped[skill]
-                inherited, _ = self._beliefs.get(blocker, (UNKNOWN_MASTERY, 0))
+                inherited = self._beliefs.get(
+                    blocker, (UNKNOWN_MASTERY, 0, 0.0, 0.0, 0.0)
+                )[0]
                 mastery = min(inherited, mastery_threshold - 0.05)
             nodes[skill] = node.model_copy(
                 update={
                     "mastery": round(mastery, 4),
-                    "confidence": round(confidence_from_attempts(attempts), 4),
+                    "confidence": round(
+                        confidence_from_evidence(
+                            weight, agreed, against, self.bkt.p_slip, self.bkt.p_guess
+                        ),
+                        4,
+                    ),
                     "attempts": attempts,
+                    "evidence_weight": round(weight, 6),
+                    "agree_correct": round(agreed, 6),
+                    "agree_wrong": round(against, 6),
                 }
             )
 
@@ -269,6 +303,6 @@ class DiagnosticSession:
             missing_prerequisites=missing,
             # Confidence in the DIAGNOSIS, which is a function of how much we asked --
             # not of how well they did. Four answers is a sketch; eight is a picture.
-            confidence=round(confidence_from_attempts(len(self.answered)), 4),
+            confidence=round(coverage(len(self.answered)), 4),
             evidence=evidence,
         )
