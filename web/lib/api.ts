@@ -25,11 +25,23 @@ type CachedJwt = {
 let cachedJwt: CachedJwt | null = null;
 let jwtRequest: Promise<string> | null = null;
 
+type AuthRouteFailure = {
+  route: "/api/auth/token" | "/api/auth/get-session";
+  status: number;
+  unauthenticated: boolean;
+  unavailable: boolean;
+};
+
+type AuthTokenAttempt =
+  | { token: string; failure: null }
+  | { token: null; failure: AuthRouteFailure };
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
     readonly kind: "network" | "http" | "timeout",
+    readonly recovery?: "sign-out",
   ) {
     super(message);
   }
@@ -62,36 +74,127 @@ function sendToSignIn() {
   }
 }
 
-async function loadJwt() {
-  try {
-    const result = await authClient.token();
-    if (result.error || !result.data?.token) {
-      const status = result.error?.status ?? 0;
-      if (status === 401) sendToSignIn();
-      throw new ApiError(
-        status,
-        status === 401
-          ? "Your session has ended. Please sign in again."
-          : status === 0 || status >= 500
-            ? "We couldn't reach the sign-in service. Please try again."
-            : "Something went wrong. Please try again.",
-        "http",
-      );
-    }
+function cacheJwt(token: string) {
+  cachedJwt = {
+    token,
+    expiresAt: jwtExpiration(token),
+  };
+  return token;
+}
 
-    cachedJwt = {
-      token: result.data.token,
-      expiresAt: jwtExpiration(result.data.token),
+function errorStatus(error: unknown) {
+  if (!error || typeof error !== "object" || !("status" in error)) return 0;
+  const status = (error as { status?: unknown }).status;
+  return typeof status === "number" ? status : 0;
+}
+
+function authRouteFailure(
+  route: AuthRouteFailure["route"],
+  status: number,
+  unauthenticated = status === 401,
+): AuthRouteFailure {
+  const failure = {
+    route,
+    status,
+    unauthenticated,
+    unavailable: status === 0 || status >= 500,
+  };
+  console.warn("Neon Auth route did not provide a JWT", {
+    route: failure.route,
+    status: failure.status,
+  });
+  return failure;
+}
+
+async function tokenRouteJwt(): Promise<AuthTokenAttempt> {
+  try {
+    const result = await authClient.token({
+      fetchOptions: { credentials: "include" },
+    });
+    if (result.data?.token) return { token: result.data.token, failure: null };
+    return {
+      token: null,
+      failure: authRouteFailure("/api/auth/token", result.error?.status ?? 200),
     };
-    return result.data.token;
   } catch (error) {
-    if (error instanceof ApiError) throw error;
+    return {
+      token: null,
+      failure: authRouteFailure("/api/auth/token", errorStatus(error)),
+    };
+  }
+}
+
+async function sessionRouteJwt(): Promise<AuthTokenAttempt> {
+  let headerJwt: string | null = null;
+  let responseStatus: number | null = null;
+  try {
+    const result = await authClient.getSession({
+      fetchOptions: {
+        credentials: "include",
+        onSuccess: (ctx) => {
+          responseStatus = ctx.response.status;
+          headerJwt = ctx.response.headers.get("set-auth-jwt");
+        },
+      },
+    });
+    const sessionJwt =
+      headerJwt ??
+      (typeof result.data?.session?.token === "string" ? result.data.session.token : null);
+    if (sessionJwt) return { token: sessionJwt, failure: null };
+
+    const status = result.error?.status ?? responseStatus ?? 200;
+    const hasSession = Boolean(result.data?.session && result.data.user);
+    return {
+      token: null,
+      failure: authRouteFailure(
+        "/api/auth/get-session",
+        status,
+        status === 401 || (status === 200 && !hasSession),
+      ),
+    };
+  } catch (error) {
+    return {
+      token: null,
+      failure: authRouteFailure("/api/auth/get-session", errorStatus(error)),
+    };
+  }
+}
+
+async function loadJwt() {
+  const tokenAttempt = await tokenRouteJwt();
+  if (tokenAttempt.token !== null) return cacheJwt(tokenAttempt.token);
+
+  const sessionAttempt = await sessionRouteJwt();
+  if (sessionAttempt.token !== null) return cacheJwt(sessionAttempt.token);
+
+  const tokenFailure = tokenAttempt.failure;
+  const sessionFailure = sessionAttempt.failure;
+  if (tokenFailure.unauthenticated && sessionFailure.unauthenticated) {
+    sendToSignIn();
     throw new ApiError(
-      0,
+      401,
+      "Your session has ended. Please sign in again.",
+      "http",
+    );
+  }
+
+  const unavailableFailure = [tokenFailure, sessionFailure].find(
+    (failure) => failure.unavailable,
+  );
+  if (unavailableFailure) {
+    throw new ApiError(
+      unavailableFailure.status,
       "We couldn't reach the sign-in service. Please try again.",
       "http",
     );
   }
+
+  throw new ApiError(
+    sessionFailure.status,
+    "You're signed in, but we couldn't start a tutoring session. Try signing out and back in.",
+    "http",
+    "sign-out",
+  );
 }
 
 async function getJwt(forceRefresh = false) {

@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "re
 import {
   ApiError,
   api,
+  clearCachedJwt,
   type Activity,
   type DiagnosticStep,
   type LanguageOption,
@@ -34,6 +35,7 @@ type Stage = "welcome" | "diagnostic" | "app";
 type VisibleError = {
   message: string;
   kind: "network" | "http" | "timeout" | "unexpected";
+  recovery?: "sign-out";
 };
 
 type SlowTutorAction = "begin" | "submit";
@@ -173,6 +175,7 @@ export default function Page() {
   const [slowTutorAction, setSlowTutorAction] = useState<SlowTutorAction | null>(null);
   const [restartNote, setRestartNote] = useState<string | null>(null);
   const [error, setError] = useState<VisibleError | null>(null);
+  const [recoverySigningOut, setRecoverySigningOut] = useState(false);
 
   const [step, setStep] = useState<DiagnosticStep | null>(null);
   const [plan, setPlan] = useState<Plan | null>(null);
@@ -240,7 +243,7 @@ export default function Page() {
   const presentError = useCallback((err: unknown) => {
     if (err instanceof ApiError) {
       if (err.kind === "network") engine.reportUnreachable();
-      setError({ message: err.message, kind: err.kind });
+      setError({ message: err.message, kind: err.kind, recovery: err.recovery });
       return;
     }
     console.warn("Unexpected tutoring interface error", err);
@@ -261,6 +264,42 @@ export default function Page() {
       setInFlight(false);
     }
   }, [presentError]);
+
+  const signOutAndTryAgain = useCallback(async () => {
+    setRecoverySigningOut(true);
+    try {
+      const result = await authClient.signOut();
+      if (result.error) {
+        console.warn("Neon Auth recovery sign-out failed", {
+          route: "/api/auth/sign-out",
+          status: result.error.status,
+        });
+        setError({
+          message:
+            result.error.status === 0 || result.error.status >= 500
+              ? "We couldn't reach the sign-in service. Please try again."
+              : "We couldn't sign you out. Please try again.",
+          kind: "http",
+          recovery: "sign-out",
+        });
+        return;
+      }
+      clearCachedJwt();
+      window.location.assign("/auth/sign-in");
+    } catch {
+      console.warn("Neon Auth recovery sign-out failed", {
+        route: "/api/auth/sign-out",
+        status: 0,
+      });
+      setError({
+        message: "We couldn't reach the sign-in service. Please try again.",
+        kind: "http",
+        recovery: "sign-out",
+      });
+    } finally {
+      setRecoverySigningOut(false);
+    }
+  }, []);
 
   const moveLanguageSelection = (nextIndex: number) => {
     const option = languageOptions[nextIndex];
@@ -489,7 +528,21 @@ export default function Page() {
           {statusCopy.detail}
         </div>
       )}
-      {error && <p className="err">{error.message}</p>}
+      {error && (
+        <div className="row err" role="alert">
+          <span>{error.message}</span>
+          {error.recovery === "sign-out" && (
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={signOutAndTryAgain}
+              disabled={recoverySigningOut}
+            >
+              {recoverySigningOut ? "Signing out…" : "Sign out and try again"}
+            </button>
+          )}
+        </div>
+      )}
 
       {stage === "welcome" && (
         <div className="hero">
