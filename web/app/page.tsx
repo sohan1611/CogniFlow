@@ -1278,11 +1278,15 @@ function Learn({
                 go, and I&apos;ll tell you exactly what went wrong.
               </p>
             )}
-            {view.problem.grounded_in.length > 0 && (
-              <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
-                Based on: {view.problem.grounded_in.join(", ")}
-              </p>
-            )}
+            {/* This used to print the raw retrieval sources -- "04_loops.md#4.1 Why
+                loops exist" -- which names our own filenames and tells a student
+                nothing about what they are being asked to do. What is useful here is
+                what the exercise is testing and how the submission will be judged. */}
+            <p className="muted" style={{ marginTop: 12, marginBottom: 0 }}>
+              Testing <strong>{pretty(view.target_skill ?? "")}</strong>
+              {view.difficulty ? ` · ${view.difficulty.toLowerCase()}` : ""}. Your code is
+              run against real test cases and compared with the expected output above.
+            </p>
           </div>
         ) : (
           <div className="card">
@@ -1300,21 +1304,46 @@ function Learn({
         <div className="head">
           <h2>What the tutor believes</h2>
         </div>
+        <p className="muted" style={{ marginTop: 0, marginBottom: 14 }}>
+          What we believe you know, and how much evidence sits behind each one. Skills we
+          have not tested yet say so rather than showing a number.
+        </p>
         {Object.entries(view.mastery)
           .sort((a, b) => a[1] - b[1])
-          .map(([skill, value]) => (
-            <div key={skill} style={{ marginBottom: 12 }}>
-              <div className="spread">
-                <span style={{ fontWeight: skill === view.target_skill ? 700 : 400 }}>
-                  {pretty(skill)}
-                </span>
-                <span className="muted">{value.toFixed(2)}</span>
+          .map(([skill, value]) => {
+            // A skill at its prior is not a skill at 30%: it is one we have never tested.
+            // Showing the prior as a figure is how untested skills came to display 0.24
+            // indistinguishably from a skill the student had genuinely failed.
+            const measured = (view.measured ?? []).includes(skill);
+            const confidence = view.confidence?.[skill] ?? 0;
+            return (
+              <div key={skill} style={{ marginBottom: 12 }}>
+                <div className="spread">
+                  <span style={{ fontWeight: skill === view.target_skill ? 700 : 400 }}>
+                    {pretty(skill)}
+                  </span>
+                  <span className="muted">
+                    {measured ? value.toFixed(2) : "not checked yet"}
+                  </span>
+                </div>
+                <div className="bar">
+                  <span
+                    style={{
+                      width: measured ? `${Math.min(1, value) * 100}%` : "0%",
+                      opacity: measured ? 1 : 0.35,
+                    }}
+                  />
+                </div>
+                {measured && (
+                  <div className="muted" style={{ fontSize: ".78rem", marginTop: 3 }}>
+                    {confidence >= 0.5
+                      ? `confident · ${confidence.toFixed(2)}`
+                      : `still checking · ${confidence.toFixed(2)}`}
+                  </div>
+                )}
               </div>
-              <div className="bar">
-                <span style={{ width: `${Math.min(1, value) * 100}%` }} />
-              </div>
-            </div>
-          ))}
+            );
+          })}
       </aside>
     </div>
   );

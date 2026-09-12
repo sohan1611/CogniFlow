@@ -1268,12 +1268,16 @@ p { margin: 0 0 10px; }
   padding-bottom: 4px;
 }
 .heatmap {
+  /* The grid was sixteen 14px columns -- 318px of drawing however wide the card was,
+     which is why it sat in the left third of the Progress panel. Twenty-six weeks of
+     18px cells is 602px, so it fills the card, and shows half a year rather than a
+     quarter. The scroll container above still handles narrow screens. */
   width: max-content;
   min-width: 322px;
 }
 .heatmap-months {
   display: grid;
-  grid-template-columns: 30px repeat(16, 14px);
+  grid-template-columns: 30px repeat(26, 18px);
   gap: 4px;
   align-items: end;
   margin-bottom: 4px;
@@ -1283,23 +1287,25 @@ p { margin: 0 0 10px; }
 }
 .heatmap-body {
   display: grid;
-  grid-template-columns: 30px repeat(16, 14px);
+  grid-template-columns: 30px repeat(26, 18px);
   gap: 4px;
 }
 .heatmap-days,
 .heatmap-week {
   display: grid;
-  grid-template-rows: repeat(7, 14px);
+  grid-template-rows: repeat(7, 18px);
   gap: 4px;
 }
 .heatmap-days {
   color: var(--ink-3);
   font-size: 10px;
-  line-height: 14px;
+  /* Matches the cell row height exactly; if these two drift the weekday labels stop
+     lining up with the squares they name. */
+  line-height: 18px;
 }
 .heat-cell {
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   border-radius: 4px;
   background: var(--heat-0);
   border: 1px solid var(--card-border);

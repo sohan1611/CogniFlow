@@ -98,11 +98,19 @@ function bestDay(byDay: Map<string, number>) {
   return { count: best.count, label: shortDate(new Date(best.key)) };
 }
 
+// Kept in step with the two `repeat(26, 18px)` grids in globals.css -- the column count
+// lives in CSS and the date range lives here, so they have to agree.
+const HEATMAP_WEEKS = 26;
+
 export function StudentDashboard({ activity }: { activity: Activity }) {
   const { byDay, byHour } = buildLocalBuckets(activity);
   const today = startOfLocalDay(new Date());
-  const firstWeek = addDays(mondayStart(today), -15 * 7);
-  const weeks = Array.from({ length: 16 }, (_, week) =>
+  // Half a year rather than a quarter. The grid used to be sixteen columns of fixed
+  // 14px cells, so it drew 318px however wide the card was and sat in the left third of
+  // it. The columns now stretch, so more weeks is what fills the space -- and a study
+  // record is more use the further back it goes.
+  const firstWeek = addDays(mondayStart(today), -(HEATMAP_WEEKS - 1) * 7);
+  const weeks = Array.from({ length: HEATMAP_WEEKS }, (_, week) =>
     Array.from({ length: 7 }, (_, day) => addDays(firstWeek, week * 7 + day)),
   );
   const monthLabels = buildMonthLabels(weeks);
@@ -193,7 +201,10 @@ export function StudentDashboard({ activity }: { activity: Activity }) {
                     className={`hour-bar heat-${intensity(count)}`}
                     style={{ height }}
                   />
-                  {[0, 6, 12, 18].includes(hour) && <small>{hour}</small>}
+                  {/* Label the hours the student actually studied, plus the quarter
+                      marks. Fixed 0/6/12/18 labels never marked the column the bar was
+                      in, so a single late-evening bar sat over an unlabelled gap. */}
+                  {(count > 0 || [0, 6, 12, 18].includes(hour)) && <small>{hour}</small>}
                 </div>
               );
             })}

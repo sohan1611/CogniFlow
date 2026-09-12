@@ -448,6 +448,15 @@ def _view(session: Session) -> dict[str, Any]:
         "teaching_mode": values.get("teaching_mode"),
         "difficulty": values.get("difficulty_level"),
         "mastery": values.get("mastery_scores", {}),
+        # Mastery was shipped without it, so the exercise screen showed a bare 0.56 with
+        # nothing to say whether that rested on one observation or ten. A belief without
+        # its evidence is the thing this release exists to stop presenting.
+        "confidence": values.get("confidence_scores", {}),
+        "measured": sorted(
+            skill
+            for skill, node in (values.get("skill_graph") or {}).items()
+            if float((node or {}).get("evidence_weight") or 0.0) > 0.0
+        ),
         "returning_to": (values.get("prereq_return_stack") or [None])[0],
         "recommended_next": values.get("recommended_next_skill"),
         "session_status": values.get("session_status"),

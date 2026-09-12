@@ -466,6 +466,10 @@ export type TutorView = {
     was_our_fault: boolean;
   } | null;
   target_skill: string | null;
+  /** Confidence per skill: how much evidence stands behind each mastery estimate. */
+  confidence: Record<string, number>;
+  /** Skills we have actually observed. Anything absent is a prior, not a measurement. */
+  measured: string[];
   language?: string | null;
   teaching_mode: string | null;
   difficulty: string | null;
